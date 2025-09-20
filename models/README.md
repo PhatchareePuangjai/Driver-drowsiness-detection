@@ -1,4 +1,5 @@
 # Models Directory
+
 ## ส่วน Machine Learning Models สำหรับตรวจจับอาการง่วงนอน
 
 ### โครงสร้างไฟล์
@@ -33,13 +34,15 @@ models/
 ### การใช้งาน
 
 #### 1. YOLO Model
+
 ```bash
 cd yolo/
 python train_yolo.py --data ../data/dataset.yaml --epochs 100
 python test_yolo.py --weights weights/best.pt --source 0
 ```
 
-#### 2. Faster R-CNN Model  
+#### 2. Faster R-CNN Model
+
 ```bash
 cd faster_rcnn/
 python train_faster_rcnn.py --config config/faster_rcnn_config.py
@@ -47,6 +50,7 @@ python evaluate.py --model_path checkpoints/model_final.pth
 ```
 
 #### 3. VGG16 Model
+
 ```bash
 cd vgg16/
 python train_vgg16.py --data_path ../data/processed/
@@ -57,7 +61,7 @@ python classify.py --image_path test_image.jpg
 
 - **Input**: ภาพหรือวิดีโอสตรีมจากกล้อง
 - **Output**: การจำแนก Alert/Drowsy พร้อมตำแหน่งใบหน้า
-- **Classes**: 
+- **Classes**:
   - 0: Alert (ตื่นตัว)
   - 1: Drowsy (ง่วง)
 

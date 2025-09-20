@@ -3,12 +3,14 @@
 ## ข้อกำหนดของระบบ
 
 ### Hardware Requirements
+
 - **RAM**: อย่างน้อย 8GB (แนะนำ 16GB)
 - **GPU**: NVIDIA GPU พร้อม CUDA support (สำหรับการฝึกโมเดล)
 - **Storage**: อย่างน้อย 10GB ว่าง
 - **CPU**: Intel i5 หรือ AMD Ryzen 5 ขึ้นไป
 
 ### Software Requirements
+
 - **Python**: 3.8 - 3.10
 - **Operating System**: Windows 10/11, macOS 10.15+, Ubuntu 18.04+
 - **Android Studio**: Arctic Fox หรือใหม่กว่า (สำหรับพัฒนา Android)

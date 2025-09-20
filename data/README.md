@@ -1,4 +1,5 @@
 # Data Directory
+
 ## ข้อมูลสำหรับการฝึกและทดสอบโมเดล
 
 ### โครงสร้างไฟล์
@@ -34,10 +35,12 @@ data/
 ### ข้อมูลที่ใช้
 
 1. **ประเภทข้อมูล**:
+
    - ภาพหน้าของผู้ขับขี่ในสถานะต่างๆ
    - วิดีโอการขับขี่แบบต่อเนื่อง
 
 2. **Labels**:
+
    - **Alert (0)**: สถานะตื่นตัว, ตาเปิด, ไม่หาว
    - **Drowsy (1)**: สถานะง่วง, ตาปิด/ครึ่งปิด, หาว, ศีรษะสัปหงก
 
@@ -65,11 +68,13 @@ python scripts/augment_data.py --output_dir augmented/
 ### Data Augmentation Techniques
 
 1. **Geometric Transformations**:
+
    - Rotation (-15° to +15°)
    - Horizontal flip
    - Slight translation
 
 2. **Color Transformations**:
+
    - Brightness adjustment
    - Contrast adjustment
    - Hue/Saturation changes
@@ -98,8 +103,8 @@ train_dataset = DrowsinessDataset(
 )
 
 train_loader = DataLoader(
-    train_dataset, 
-    batch_size=32, 
+    train_dataset,
+    batch_size=32,
     shuffle=True
 )
 ```

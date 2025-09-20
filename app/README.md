@@ -1,4 +1,5 @@
 # Application Directory
+
 ## ส่วน Mobile Application และ Backend API
 
 ### โครงสร้างไฟล์
@@ -44,10 +45,12 @@ app/
 ### ฟีเจอร์หลัก
 
 1. **Real-time Camera Capture**
+
    - ใช้ Camera2 API สำหรับการบันทึกวิดีโอ
    - ประมวลผลเฟรมแบบ Real-time
 
 2. **Detection Service**
+
    - ส่งข้อมูลไปยัง Backend API
    - รับผลการตรวจจับกลับมา
 
@@ -81,11 +84,13 @@ cd app/android/
 ### ฟีเจอร์หลัก
 
 1. **Model Inference API**
+
    - รับภาพจาก Mobile App
    - ประมวลผลด้วย ML Models
    - ส่งผลลัพธ์กลับ
 
 2. **Real-time Processing**
+
    - WebSocket support สำหรับ Real-time communication
    - Batch processing สำหรับประสิทธิภาพ
 
@@ -110,12 +115,12 @@ gunicorn -w 4 -b 0.0.0.0:8000 app:app
 
 ### API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/detect` | ตรวจจับอาการง่วงจากภาพ |
-| POST | `/api/detect/batch` | ตรวจจับแบบ Batch |
-| GET | `/api/health` | ตรวจสอบสถานะเซิร์ฟเวอร์ |
-| GET | `/api/models` | รายการโมเดลที่ใช้งานได้ |
+| Method | Endpoint            | Description             |
+| ------ | ------------------- | ----------------------- |
+| POST   | `/api/detect`       | ตรวจจับอาการง่วงจากภาพ  |
+| POST   | `/api/detect/batch` | ตรวจจับแบบ Batch        |
+| GET    | `/api/health`       | ตรวจสอบสถานะเซิร์ฟเวอร์ |
+| GET    | `/api/models`       | รายการโมเดลที่ใช้งานได้ |
 
 ### ตัวอย่าง API Usage
 
@@ -128,7 +133,7 @@ with open("test_image.jpg", "rb") as f:
     image_data = base64.b64encode(f.read()).decode()
 
 # ส่งข้อมูลไป API
-response = requests.post("http://localhost:8000/api/detect", 
+response = requests.post("http://localhost:8000/api/detect",
                         json={"image": image_data})
 
 result = response.json()
