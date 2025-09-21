@@ -167,3 +167,9 @@ pip install -r requirements.txt
 1. **สิ่งกีดขวาง**: ประสิทธิภาพอาจลดลงเมื่อมีแว่นกันแดดเข้ม หน้ากากอนามัย
 2. **สภาพแสง**: อาจไม่ทำงานได้ดีในสภาวะแสงน้อยหรือแสงจ้าเกินไป
 3. **ขอบเขต**: ไม่ครอบคลุมการตรวจจับจากพฤติกรรมการขับขี่หรือสัญญาณทางสรีรวิทยาอื่นๆ
+
+# Link data set
+
+1. https://www.kaggle.com/datasets/cubeai/drowsiness-detection-for-yolov8
+2. https://www.kaggle.com/datasets/zeyad1mashhour/driver-inattention-detection-dataset?select=test
+3. https://www.kaggle.com/datasets/nikospetrellis/nitymed
