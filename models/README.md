@@ -6,7 +6,7 @@
 
 ```
 models/
-├── yolo/                          # YOLO Implementation
+├── yolo/                         # YOLO Implementation
 │   ├── train_yolo.py             # ฝึกโมเดล YOLO
 │   ├── test_yolo.py              # ทดสอบโมเดล YOLO
 │   ├── detect.py                 # Real-time detection
@@ -14,16 +14,16 @@ models/
 │   │   └── yolo_config.yaml
 │   └── weights/                  # Trained model weights
 │       └── best.pt
-├── faster_rcnn/                   # Faster R-CNN (Baseline)
+├── faster_rcnn/                  # Faster R-CNN (Baseline)
 │   ├── train_faster_rcnn.py      # ฝึกโมเดล Faster R-CNN
 │   ├── evaluate.py               # ประเมินผลโมเดล
 │   ├── inference.py              # Inference script
 │   └── config/
 │       └── faster_rcnn_config.py
 ├── vgg16/                         # VGG16 Implementation
-│   ├── train_vgg16.py            # ฝึกโมเดล VGG16
-│   ├── classify.py               # จำแนกประเภท
-│   └── feature_extractor.py      # Feature extraction
+│   ├── train_vgg16.py             # ฝึกโมเดล VGG16
+│   ├── classify.py                # จำแนกประเภท
+│   └── feature_extractor.py       # Feature extraction
 └── shared/                        # Shared utilities
     ├── preprocessing.py           # ประมวลผลภาพเบื้องต้น
     ├── data_augmentation.py       # Data augmentation
