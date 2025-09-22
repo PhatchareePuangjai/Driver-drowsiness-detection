@@ -464,6 +464,9 @@ pretrained/
 *.bz2
 *.xz
 
+# training model manual
+training_model_manual/pool_data_set/data_set_1
+
 # ==============================================================================
 # Keep these files
 # ==============================================================================
