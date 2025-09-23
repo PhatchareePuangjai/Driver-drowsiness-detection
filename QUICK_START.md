@@ -3,6 +3,7 @@
 ## ⚡ Super Fast Setup (1 minute)
 
 ### Prerequisites
+
 - Node.js v24.2.0
 - npm v11.3.0+
 - macOS/Linux terminal
@@ -54,6 +55,7 @@ ionic capacitor run android
 ## ⚙️ Environment Variables
 
 The app uses these default settings:
+
 - **Backend API**: `http://localhost:5000`
 - **WebSocket**: `ws://localhost:5000`
 
@@ -61,12 +63,12 @@ Edit `.env` file to customize these settings.
 
 ## 🛠 Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `ionic serve` | Start development server |
-| `npm run build` | Build for production |
-| `npm run test.unit` | Run unit tests |
-| `npm run lint` | Run code linting |
+| Command             | Description              |
+| ------------------- | ------------------------ |
+| `ionic serve`       | Start development server |
+| `npm run build`     | Build for production     |
+| `npm run test.unit` | Run unit tests           |
+| `npm run lint`      | Run code linting         |
 
 ## 🆘 Need Help?
 
@@ -77,10 +79,12 @@ Edit `.env` file to customize these settings.
 ## 🎯 Next Phase: Core Development
 
 Once your app is running, you're ready for **Phase 2: Core Development**:
+
 - Core services implementation
 - Camera integration
 - ML model integration
 - Backend API connection
 
 ---
+
 **Ready to build something amazing? Let's go! 🚀**
