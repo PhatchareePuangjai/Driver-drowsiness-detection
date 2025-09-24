@@ -1,5 +1,4 @@
-import React, { useState, useRef } from "react";
-import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import React, { useState, useRef, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import {
   IonButton,
@@ -21,6 +20,7 @@ const CameraTest: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const isWeb = Capacitor.getPlatform() === "web";
 
@@ -31,14 +31,34 @@ const CameraTest: React.FC = () => {
     setDebugInfo((prev) => [...prev.slice(-4), debugMessage]); // Keep last 5 messages
   };
 
-  // Web-based camera permission and capture
-  const requestWebCameraPermission = async () => {
+  useEffect(() => {
+    // Cleanup stream on unmount
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  // Initialize web camera for immediate use
+  const initializeWebCamera = async () => {
     try {
-      addDebugInfo("🔒 Requesting web camera permissions...");
+      addDebugInfo("� Initializing web camera...");
       setError(null);
+      setIsLoading(true);
 
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("getUserMedia is not supported in this browser");
+        throw new Error("Camera API not supported in this browser");
+      }
+
+      // Check if we're on HTTPS or localhost
+      const isSecure =
+        window.location.protocol === "https:" ||
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+
+      if (!isSecure) {
+        throw new Error("Camera access requires HTTPS connection or localhost");
       }
 
       const constraints = {
@@ -49,115 +69,122 @@ const CameraTest: React.FC = () => {
         },
       };
 
-      addDebugInfo(
-        `🎯 Requesting camera with constraints: ${JSON.stringify(constraints)}`
-      );
+      addDebugInfo(`🎯 Requesting camera access...`);
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(
         constraints
       );
+
       addDebugInfo(
-        `✅ Camera stream obtained: ${mediaStream.getTracks().length} tracks`
+        `✅ Camera access granted! Tracks: ${mediaStream.getTracks().length}`
       );
 
+      streamRef.current = mediaStream;
       setPermissionStatus("granted");
-      addDebugInfo("✅ Permission status set to granted");
 
-      // Stop the stream immediately after permission check
-      mediaStream.getTracks().forEach((track, index) => {
-        addDebugInfo(`🛑 Stopping track ${index}: ${track.kind}`);
-        track.stop();
-      });
+      // Setup video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        addDebugInfo("� Video stream connected");
+      }
     } catch (err: any) {
-      addDebugInfo(`❌ Permission error: ${err.name} - ${err.message}`);
+      addDebugInfo(
+        `❌ Camera initialization error: ${err.name} - ${err.message}`
+      );
       setPermissionStatus("denied");
 
       let message = err.message;
       if (err.name === "NotAllowedError") {
         message =
-          "Camera access denied. Please allow camera access in browser settings.";
+          "Camera access denied. Please click 'Allow' when prompted by your browser.";
       } else if (err.name === "NotFoundError") {
         message = "No camera found on this device.";
       } else if (err.name === "NotSupportedError") {
         message = "Camera not supported in this browser.";
       } else if (err.name === "NotReadableError") {
-        message = "Camera is already in use by another application.";
+        message = "Camera is being used by another application.";
+      } else if (
+        err.message.includes("HTTPS") ||
+        err.message.includes("localhost")
+      ) {
+        message =
+          "Camera requires HTTPS connection. Please use https:// or run on localhost.";
       }
 
       setError(`Camera error: ${message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Take photo using web camera
   const takeWebPhoto = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      addDebugInfo("🔍 Taking web photo...");
+      addDebugInfo("� Capturing photo...");
 
-      const mediaStream = await navigator.mediaDevices!.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: "user",
-        },
-      });
+      if (!streamRef.current) {
+        await initializeWebCamera();
+        if (!streamRef.current) {
+          throw new Error("Could not initialize camera");
+        }
+      }
 
       if (videoRef.current && canvasRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         const context = canvas.getContext("2d");
 
-        video.srcObject = mediaStream;
+        // Wait for video to be ready
+        if (video.readyState < 2) {
+          addDebugInfo("⏳ Waiting for video to load...");
+          await new Promise((resolve, reject) => {
+            video.onloadeddata = resolve;
+            video.onerror = reject;
+            setTimeout(() => reject(new Error("Video load timeout")), 5000);
+          });
+        }
 
-        await new Promise((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            addDebugInfo(
-              `📐 Video dimensions: ${canvas.width}x${canvas.height}`
-            );
-            resolve(true);
-          };
-          video.onerror = () => reject(new Error("Video failed to load"));
-          setTimeout(() => reject(new Error("Video load timeout")), 10000);
-          video.play().catch(reject);
-        });
+        // Set canvas dimensions
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
 
-        // Small delay to ensure video is playing
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        addDebugInfo(`📐 Canvas size: ${canvas.width}x${canvas.height}`);
 
         if (context) {
-          addDebugInfo("📷 Capturing frame from video...");
+          // Capture frame
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
           const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
           const base64 = dataUrl.split(",")[1];
 
           setPhotoSrc(dataUrl);
-          addDebugInfo(`✅ Photo captured! Size: ${base64.length} chars`);
+          addDebugInfo(
+            `✅ Photo captured! Size: ${Math.round(base64.length / 1024)}KB`
+          );
 
           await testBackendConnection(base64);
         }
-
-        // Stop the stream
-        mediaStream.getTracks().forEach((track) => track.stop());
       }
     } catch (err: any) {
-      addDebugInfo(`❌ Photo error: ${err.message}`);
+      addDebugInfo(`❌ Photo capture error: ${err.message}`);
       setError(`Photo error: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const takePicture = async () => {
-    if (isWeb) {
-      return takeWebPhoto();
-    }
-
+  // Mobile camera using Capacitor (only for non-web platforms)
+  const takeMobilePhoto = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      addDebugInfo("🔍 Taking mobile photo...");
+      addDebugInfo("� Taking mobile photo...");
+
+      // Dynamic import to avoid web bundle issues
+      const { Camera, CameraResultType, CameraSource } = await import(
+        "@capacitor/camera"
+      );
 
       const image = await Camera.getPhoto({
         quality: 80,
@@ -170,7 +197,7 @@ const CameraTest: React.FC = () => {
 
       if (image.dataUrl) {
         setPhotoSrc(image.dataUrl);
-        addDebugInfo("✅ Mobile photo taken successfully!");
+        addDebugInfo("✅ Mobile photo captured!");
         await testBackendConnection(image.dataUrl.split(",")[1]);
       }
     } catch (err: any) {
@@ -181,13 +208,25 @@ const CameraTest: React.FC = () => {
     }
   };
 
+  const takePicture = async () => {
+    if (isWeb) {
+      return takeWebPhoto();
+    } else {
+      return takeMobilePhoto();
+    }
+  };
+
   const requestPermissions = async () => {
     if (isWeb) {
-      return requestWebCameraPermission();
+      return initializeWebCamera();
     }
 
     try {
       addDebugInfo("🔒 Requesting mobile permissions...");
+
+      // Dynamic import for mobile platforms
+      const { Camera } = await import("@capacitor/camera");
+
       const permissions = await Camera.requestPermissions({
         permissions: ["camera"],
       });
@@ -210,9 +249,14 @@ const CameraTest: React.FC = () => {
     try {
       addDebugInfo("🌐 Testing backend connection...");
 
-      const response = await fetch("http://localhost:8000/detect", {
+      const backendUrl = "http://127.0.0.1:8000/api/detect";
+
+      const response = await fetch(backendUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        mode: "cors",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           image: imageBase64,
           confidence_threshold: 0.5,
@@ -224,18 +268,31 @@ const CameraTest: React.FC = () => {
         addDebugInfo(`✅ Backend response received`);
 
         const alertMsg = `Detection Result:\n${
-          result.is_drowsy ? "😴 DROWSY" : "😊 ALERT"
+          result.isDrowsy ? "😴 DROWSY" : "😊 ALERT"
         }\nConfidence: ${(result.confidence * 100).toFixed(1)}%\nModel: ${
-          result.model_info?.name || "Mock"
-        }`;
+          result.modelUsed || "Mock"
+        }\nClass: ${result.className || "N/A"}`;
         setError(alertMsg);
         setShowAlert(true);
       } else {
-        throw new Error(`HTTP ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
     } catch (err: any) {
       addDebugInfo(`❌ Backend error: ${err.message}`);
-      setError(`Backend error: ${err.message}`);
+
+      // More specific error messages
+      let errorMessage = err.message;
+      if (err.message.includes("Failed to fetch")) {
+        errorMessage =
+          "Cannot connect to backend server. Make sure it's running on http://127.0.0.1:8000";
+      } else if (err.message.includes("CORS")) {
+        errorMessage = "CORS error - check backend CORS configuration";
+      } else if (err.message.includes("strict-origin-when-cross-origin")) {
+        errorMessage = "CORS policy error - backend needs proper CORS headers";
+      }
+
+      setError(`Backend error: ${errorMessage}`);
       setShowAlert(true);
     }
   };
@@ -327,9 +384,11 @@ const CameraTest: React.FC = () => {
             </p>
             <p>
               <strong>HTTPS:</strong>{" "}
-              {window.location.protocol === "https:"
+              {window.location.protocol === "https:" ||
+              window.location.hostname === "localhost" ||
+              window.location.hostname === "127.0.0.1"
                 ? "✅ Yes"
-                : "❌ No (may cause camera issues)"}
+                : "❌ No (camera requires HTTPS)"}
             </p>
           </IonText>
         </div>
@@ -341,24 +400,52 @@ const CameraTest: React.FC = () => {
             color="secondary"
             disabled={isLoading}
           >
-            {isWeb ? "🎥 Request Web Camera" : "📷 Request Mobile Camera"}
+            {isWeb ? "🎥 REQUEST WEB CAMERA" : "📷 REQUEST MOBILE CAMERA"}
           </IonButton>
 
           <IonButton
             expand="block"
             onClick={takePicture}
-            disabled={isLoading || permissionStatus !== "granted"}
+            disabled={isLoading}
             color="primary"
           >
-            {isLoading ? "⏳ Processing..." : "📸 Take Photo & Detect"}
+            {isLoading ? "⏳ PROCESSING..." : "📸 TAKE PHOTO & DETECT"}
           </IonButton>
         </div>
 
-        {/* Hidden video and canvas for web camera capture */}
+        {/* Video preview for web (hidden but functional) */}
         {isWeb && (
           <div style={{ display: "none" }}>
-            <video ref={videoRef} autoPlay playsInline />
+            <video ref={videoRef} autoPlay playsInline muted />
             <canvas ref={canvasRef} />
+          </div>
+        )}
+
+        {/* Show live video preview for web when camera is active */}
+        {isWeb && permissionStatus === "granted" && streamRef.current && (
+          <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+            <div
+              style={{
+                display: "inline-block",
+                border: "2px solid var(--ion-color-primary)",
+                borderRadius: "8px",
+                overflow: "hidden",
+                maxWidth: "300px",
+              }}
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ width: "100%", height: "auto" }}
+              />
+            </div>
+            <IonText color="medium">
+              <p style={{ fontSize: "0.9em", marginTop: "0.5rem" }}>
+                📹 Live camera preview - Click "TAKE PHOTO" to capture
+              </p>
+            </IonText>
           </div>
         )}
 

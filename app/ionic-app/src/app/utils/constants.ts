@@ -5,8 +5,8 @@
  */
 export const API_CONFIG = {
   // Base URLs from environment
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000",
-  WEBSOCKET_URL: import.meta.env.VITE_WEBSOCKET_URL || "ws://localhost:8000",
+  BASE_URL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000",
+  WEBSOCKET_URL: import.meta.env.VITE_WEBSOCKET_URL || "ws://127.0.0.1:8000",
 
   // API Endpoints
   ENDPOINTS: {
