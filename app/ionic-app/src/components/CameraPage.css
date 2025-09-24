@@ -81,7 +81,7 @@
   .camera-page ion-card {
     margin: 8px;
   }
-  
+
   .camera-page ion-card-title {
     font-size: 1rem;
   }
@@ -110,7 +110,7 @@
 }
 
 .camera-page .capture-button {
-  --background: linear-gradient(45deg, #4CAF50, #45a049);
+  --background: linear-gradient(45deg, #4caf50, #45a049);
   --color: white;
   font-weight: 600;
 }

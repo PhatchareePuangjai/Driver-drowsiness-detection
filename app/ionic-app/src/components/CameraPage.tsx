@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   IonContent,
   IonHeader,
@@ -23,8 +23,8 @@ import {
   IonGrid,
   IonRow,
   IonCol,
-  IonText
-} from '@ionic/react';
+  IonText,
+} from "@ionic/react";
 import {
   cameraOutline,
   stopCircleOutline,
@@ -32,11 +32,15 @@ import {
   eyeOutline,
   warningOutline,
   checkmarkCircleOutline,
-  alertCircleOutline
-} from 'ionicons/icons';
-import { cameraService, CameraStatus, DetectionFrame } from '../app/services/camera.service';
-import { DetectionResult } from '../app/models/api.model';
-import './CameraPage.css';
+  alertCircleOutline,
+} from "ionicons/icons";
+import {
+  cameraService,
+  CameraStatus,
+  DetectionFrame,
+} from "../app/services/camera.service";
+import { DetectionResult } from "../app/models/api.model";
+import "./CameraPage.css";
 
 const CameraPage: React.FC = () => {
   // State Management
@@ -44,16 +48,20 @@ const CameraPage: React.FC = () => {
     isInitialized: false,
     isCapturing: false,
     hasPermission: false,
-    captureCount: 0
+    captureCount: 0,
   });
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
-  const [alertMessage, setAlertMessage] = useState('');
+  const [alertMessage, setAlertMessage] = useState("");
   const [alertLevel, setAlertLevel] = useState(0);
-  const [lastDetection, setLastDetection] = useState<DetectionResult | null>(null);
+  const [lastDetection, setLastDetection] = useState<DetectionResult | null>(
+    null
+  );
   const [captureInterval, setCaptureInterval] = useState(2000); // 2 seconds default
-  const [selectedModel, setSelectedModel] = useState<'yolo' | 'faster_rcnn' | 'vgg16'>('yolo');
+  const [selectedModel, setSelectedModel] = useState<
+    "yolo" | "faster_rcnn" | "vgg16"
+  >("yolo");
   const [showSettings, setShowSettings] = useState(false);
 
   // Statistics
@@ -61,7 +69,7 @@ const CameraPage: React.FC = () => {
     totalDetections: 0,
     drowsyDetections: 0,
     alertsTriggered: 0,
-    sessionStartTime: null as Date | null
+    sessionStartTime: null as Date | null,
   });
 
   // Initialize camera service and event listeners
@@ -77,43 +85,47 @@ const CameraPage: React.FC = () => {
       setAlertLevel(level);
 
       // Update statistics
-      setSessionStats(prev => ({
+      setSessionStats((prev) => ({
         ...prev,
         totalDetections: prev.totalDetections + 1,
         drowsyDetections: prev.drowsyDetections + (result.isDrowsy ? 1 : 0),
-        alertsTriggered: prev.alertsTriggered + (result.alertTriggered ? 1 : 0)
+        alertsTriggered: prev.alertsTriggered + (result.alertTriggered ? 1 : 0),
       }));
 
       // Show alert if drowsiness detected
       if (result.isDrowsy && result.confidence > 0.7) {
-        setAlertMessage(`Drowsiness Detected! Confidence: ${(result.confidence * 100).toFixed(1)}%`);
+        setAlertMessage(
+          `Drowsiness Detected! Confidence: ${(result.confidence * 100).toFixed(
+            1
+          )}%`
+        );
         setShowAlert(true);
       }
     };
 
     const handleError = (error: any) => {
-      console.error('Camera service error:', error);
-      setAlertMessage('Camera error: ' + error.message);
+      console.error("Camera service error:", error);
+      setAlertMessage("Camera error: " + error.message);
       setShowAlert(true);
     };
 
     // Add event listeners
-    cameraService.on('statusChanged', handleStatusChange);
-    cameraService.on('detectionResult', handleDetectionResult);
-    cameraService.on('error', handleError);
-    cameraService.on('captureError', handleError);
-    cameraService.on('analysisError', handleError);
+    cameraService.on("statusChanged", handleStatusChange);
+    cameraService.on("detectionResult", handleDetectionResult);
+    cameraService.on("error", handleError);
+    cameraService.on("captureError", handleError);
+    cameraService.on("analysisError", handleError);
 
     // Get initial status
     setCameraStatus(cameraService.getStatus());
 
     // Cleanup function
     return () => {
-      cameraService.removeListener('statusChanged', handleStatusChange);
-      cameraService.removeListener('detectionResult', handleDetectionResult);
-      cameraService.removeListener('error', handleError);
-      cameraService.removeListener('captureError', handleError);
-      cameraService.removeListener('analysisError', handleError);
+      cameraService.removeListener("statusChanged", handleStatusChange);
+      cameraService.removeListener("detectionResult", handleDetectionResult);
+      cameraService.removeListener("error", handleError);
+      cameraService.removeListener("captureError", handleError);
+      cameraService.removeListener("analysisError", handleError);
     };
   }, []);
 
@@ -122,10 +134,10 @@ const CameraPage: React.FC = () => {
     try {
       setIsLoading(true);
       await cameraService.startContinuousCapture(captureInterval);
-      setSessionStats(prev => ({ ...prev, sessionStartTime: new Date() }));
+      setSessionStats((prev) => ({ ...prev, sessionStartTime: new Date() }));
     } catch (error) {
-      console.error('Failed to start capture:', error);
-      setAlertMessage('Failed to start camera capture');
+      console.error("Failed to start capture:", error);
+      setAlertMessage("Failed to start camera capture");
       setShowAlert(true);
     } finally {
       setIsLoading(false);
@@ -143,14 +155,18 @@ const CameraPage: React.FC = () => {
       setIsLoading(true);
       const result = await cameraService.analyzeSinglePhoto(selectedModel);
       setLastDetection(result);
-      
+
       if (result.isDrowsy && result.confidence && result.confidence > 0.5) {
-        setAlertMessage(`Single Detection: Drowsiness detected with ${(result.confidence * 100).toFixed(1)}% confidence`);
+        setAlertMessage(
+          `Single Detection: Drowsiness detected with ${(
+            result.confidence * 100
+          ).toFixed(1)}% confidence`
+        );
         setShowAlert(true);
       }
     } catch (error) {
-      console.error('Failed to analyze photo:', error);
-      setAlertMessage('Failed to analyze photo');
+      console.error("Failed to analyze photo:", error);
+      setAlertMessage("Failed to analyze photo");
       setShowAlert(true);
     } finally {
       setIsLoading(false);
@@ -159,24 +175,26 @@ const CameraPage: React.FC = () => {
 
   // Get status badge color
   const getStatusColor = (status: CameraStatus) => {
-    if (!status.isInitialized) return 'medium';
-    if (!status.hasPermission) return 'danger';
-    if (status.isCapturing) return 'success';
-    return 'primary';
+    if (!status.isInitialized) return "medium";
+    if (!status.hasPermission) return "danger";
+    if (status.isCapturing) return "success";
+    return "primary";
   };
 
   // Get alert level color
   const getAlertColor = (level: number) => {
-    if (level >= 3) return 'danger';
-    if (level >= 2) return 'warning';
-    if (level >= 1) return 'medium';
-    return 'success';
+    if (level >= 3) return "danger";
+    if (level >= 2) return "warning";
+    if (level >= 1) return "medium";
+    return "success";
   };
 
   // Format session duration
   const formatSessionDuration = () => {
-    if (!sessionStats.sessionStartTime) return '0s';
-    const duration = Math.floor((Date.now() - sessionStats.sessionStartTime.getTime()) / 1000);
+    if (!sessionStats.sessionStartTime) return "0s";
+    const duration = Math.floor(
+      (Date.now() - sessionStats.sessionStartTime.getTime()) / 1000
+    );
     const minutes = Math.floor(duration / 60);
     const seconds = duration % 60;
     return `${minutes}m ${seconds}s`;
@@ -208,8 +226,11 @@ const CameraPage: React.FC = () => {
               <IonRow>
                 <IonCol size="6">
                   <IonBadge color={getStatusColor(cameraStatus)}>
-                    {cameraStatus.isCapturing ? 'CAPTURING' : 
-                     cameraStatus.isInitialized ? 'READY' : 'INITIALIZING'}
+                    {cameraStatus.isCapturing
+                      ? "CAPTURING"
+                      : cameraStatus.isInitialized
+                      ? "READY"
+                      : "INITIALIZING"}
                   </IonBadge>
                 </IonCol>
                 <IonCol size="6">
@@ -222,7 +243,10 @@ const CameraPage: React.FC = () => {
                 <IonRow>
                   <IonCol>
                     <IonText color="medium">
-                      <small>Last: {cameraStatus.lastCaptureTime.toLocaleTimeString()}</small>
+                      <small>
+                        Last:{" "}
+                        {cameraStatus.lastCaptureTime.toLocaleTimeString()}
+                      </small>
                     </IonText>
                   </IonCol>
                 </IonRow>
@@ -241,7 +265,11 @@ const CameraPage: React.FC = () => {
                     expand="block"
                     fill="solid"
                     color="primary"
-                    disabled={!cameraStatus.hasPermission || cameraStatus.isCapturing || isLoading}
+                    disabled={
+                      !cameraStatus.hasPermission ||
+                      cameraStatus.isCapturing ||
+                      isLoading
+                    }
                     onClick={startCapture}
                   >
                     <IonIcon icon={cameraOutline} slot="start" />
@@ -287,8 +315,11 @@ const CameraPage: React.FC = () => {
             <IonCardHeader>
               <IonCardTitle>
                 Last Detection
-                <IonBadge color={lastDetection.isDrowsy ? 'danger' : 'success'} style={{ marginLeft: '10px' }}>
-                  {lastDetection.isDrowsy ? 'DROWSY' : 'ALERT'}
+                <IonBadge
+                  color={lastDetection.isDrowsy ? "danger" : "success"}
+                  style={{ marginLeft: "10px" }}
+                >
+                  {lastDetection.isDrowsy ? "DROWSY" : "ALERT"}
                 </IonBadge>
               </IonCardTitle>
             </IonCardHeader>
@@ -297,19 +328,27 @@ const CameraPage: React.FC = () => {
                 <IonRow>
                   <IonCol size="6">
                     <IonText>
-                      <p><strong>Confidence:</strong> {(lastDetection.confidence * 100).toFixed(1)}%</p>
+                      <p>
+                        <strong>Confidence:</strong>{" "}
+                        {(lastDetection.confidence * 100).toFixed(1)}%
+                      </p>
                     </IonText>
                   </IonCol>
                   <IonCol size="6">
                     <IonText>
-                      <p><strong>Model:</strong> {lastDetection.modelUsed}</p>
+                      <p>
+                        <strong>Model:</strong> {lastDetection.modelUsed}
+                      </p>
                     </IonText>
                   </IonCol>
                 </IonRow>
                 <IonRow>
                   <IonCol size="6">
                     <IonText>
-                      <p><strong>Time:</strong> {lastDetection.inferenceTime.toFixed(2)}s</p>
+                      <p>
+                        <strong>Time:</strong>{" "}
+                        {lastDetection.inferenceTime.toFixed(2)}s
+                      </p>
                     </IonText>
                   </IonCol>
                   <IonCol size="6">
@@ -322,7 +361,10 @@ const CameraPage: React.FC = () => {
                   <IonRow>
                     <IonCol>
                       <IonText color="medium">
-                        <small>Detection area: {lastDetection.bbox.width}×{lastDetection.bbox.height}</small>
+                        <small>
+                          Detection area: {lastDetection.bbox.width}×
+                          {lastDetection.bbox.height}
+                        </small>
                       </IonText>
                     </IonCol>
                   </IonRow>
@@ -343,24 +385,32 @@ const CameraPage: React.FC = () => {
                 <IonRow>
                   <IonCol size="6">
                     <IonText>
-                      <p><strong>Duration:</strong> {formatSessionDuration()}</p>
+                      <p>
+                        <strong>Duration:</strong> {formatSessionDuration()}
+                      </p>
                     </IonText>
                   </IonCol>
                   <IonCol size="6">
                     <IonText>
-                      <p><strong>Total:</strong> {sessionStats.totalDetections}</p>
+                      <p>
+                        <strong>Total:</strong> {sessionStats.totalDetections}
+                      </p>
                     </IonText>
                   </IonCol>
                 </IonRow>
                 <IonRow>
                   <IonCol size="6">
                     <IonText color="danger">
-                      <p><strong>Drowsy:</strong> {sessionStats.drowsyDetections}</p>
+                      <p>
+                        <strong>Drowsy:</strong> {sessionStats.drowsyDetections}
+                      </p>
                     </IonText>
                   </IonCol>
                   <IonCol size="6">
                     <IonText color="warning">
-                      <p><strong>Alerts:</strong> {sessionStats.alertsTriggered}</p>
+                      <p>
+                        <strong>Alerts:</strong> {sessionStats.alertsTriggered}
+                      </p>
                     </IonText>
                   </IonCol>
                 </IonRow>
@@ -383,21 +433,27 @@ const CameraPage: React.FC = () => {
                   max={10000}
                   step={500}
                   value={captureInterval}
-                  onIonChange={e => setCaptureInterval(e.detail.value as number)}
+                  onIonChange={(e) =>
+                    setCaptureInterval(e.detail.value as number)
+                  }
                   snaps={true}
                 />
                 <IonLabel slot="end">{captureInterval / 1000}s</IonLabel>
               </IonItem>
-              
+
               <IonItem>
                 <IonLabel>Detection Model</IonLabel>
                 <IonSelect
                   value={selectedModel}
-                  onIonChange={e => setSelectedModel(e.detail.value)}
+                  onIonChange={(e) => setSelectedModel(e.detail.value)}
                 >
                   <IonSelectOption value="yolo">YOLO (Fast)</IonSelectOption>
-                  <IonSelectOption value="faster_rcnn">Faster R-CNN (Accurate)</IonSelectOption>
-                  <IonSelectOption value="vgg16">VGG16 (Lightweight)</IonSelectOption>
+                  <IonSelectOption value="faster_rcnn">
+                    Faster R-CNN (Accurate)
+                  </IonSelectOption>
+                  <IonSelectOption value="vgg16">
+                    VGG16 (Lightweight)
+                  </IonSelectOption>
                 </IonSelect>
               </IonItem>
             </IonCardContent>
@@ -410,7 +466,7 @@ const CameraPage: React.FC = () => {
           onDidDismiss={() => setShowAlert(false)}
           header="Detection Alert"
           message={alertMessage}
-          buttons={['OK']}
+          buttons={["OK"]}
         />
       </IonContent>
     </IonPage>

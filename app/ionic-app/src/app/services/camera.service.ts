@@ -1,8 +1,16 @@
 // Camera Service for Ionic React App
-import { Camera, CameraResultType, CameraSource, Photo } from '@capacitor/camera';
-import { EventEmitter } from 'eventemitter3';
-import { ApiService } from './api.service';
-import { ModelType, DetectionResult as ApiDetectionResult } from '../models/api.model';
+import {
+  Camera,
+  CameraResultType,
+  CameraSource,
+  Photo,
+} from "@capacitor/camera";
+import { EventEmitter } from "eventemitter3";
+import { ApiService } from "./api.service";
+import {
+  ModelType,
+  DetectionResult as ApiDetectionResult,
+} from "../models/api.model";
 
 export interface CameraSettings {
   quality: number;
@@ -41,7 +49,7 @@ export type DetectionResult = ApiDetectionResult;
  */
 export class CameraService extends EventEmitter {
   private static instance: CameraService;
-  
+
   private readonly DEFAULT_SETTINGS: CameraSettings = {
     quality: 80,
     allowEditing: false,
@@ -49,14 +57,14 @@ export class CameraService extends EventEmitter {
     source: CameraSource.Camera,
     width: 640,
     height: 480,
-    saveToGallery: false
+    saveToGallery: false,
   };
 
   private cameraStatus: CameraStatus = {
     isInitialized: false,
     isCapturing: false,
     hasPermission: false,
-    captureCount: 0
+    captureCount: 0,
   };
 
   private captureInterval?: NodeJS.Timeout;
@@ -86,14 +94,14 @@ export class CameraService extends EventEmitter {
     try {
       await this.checkCameraPermissions();
       this.updateStatus({ isInitialized: true });
-      this.emit('statusChanged', this.cameraStatus);
+      this.emit("statusChanged", this.cameraStatus);
     } catch (error) {
-      console.error('Failed to initialize camera:', error);
-      this.updateStatus({ 
-        isInitialized: false, 
-        errorMessage: 'Failed to initialize camera' 
+      console.error("Failed to initialize camera:", error);
+      this.updateStatus({
+        isInitialized: false,
+        errorMessage: "Failed to initialize camera",
       });
-      this.emit('error', error);
+      this.emit("error", error);
     }
   }
 
@@ -111,18 +119,20 @@ export class CameraService extends EventEmitter {
    */
   private async requestCameraPermissions(): Promise<void> {
     try {
-      const permission = await Camera.requestPermissions({ permissions: ['camera'] });
-      
-      if (permission.camera === 'granted') {
+      const permission = await Camera.requestPermissions({
+        permissions: ["camera"],
+      });
+
+      if (permission.camera === "granted") {
         this.updateStatus({ hasPermission: true, errorMessage: undefined });
       } else {
-        throw new Error('Camera permission denied');
+        throw new Error("Camera permission denied");
       }
     } catch (error) {
-      console.error('Failed to get camera permission:', error);
-      this.updateStatus({ 
-        hasPermission: false, 
-        errorMessage: 'Camera permission required for drowsiness detection' 
+      console.error("Failed to get camera permission:", error);
+      this.updateStatus({
+        hasPermission: false,
+        errorMessage: "Camera permission required for drowsiness detection",
       });
       throw error;
     }
@@ -138,21 +148,21 @@ export class CameraService extends EventEmitter {
 
     try {
       const photo = await Camera.getPhoto(this.currentSettings);
-      
+
       if (photo) {
         this.updateStatus({
           lastCaptureTime: new Date(),
           captureCount: this.cameraStatus.captureCount + 1,
-          errorMessage: undefined
+          errorMessage: undefined,
         });
-        
+
         return photo;
       } else {
-        throw new Error('Failed to capture photo');
+        throw new Error("Failed to capture photo");
       }
     } catch (error) {
-      console.error('Failed to take photo:', error);
-      this.updateStatus({ errorMessage: 'Failed to capture photo' });
+      console.error("Failed to take photo:", error);
+      this.updateStatus({ errorMessage: "Failed to capture photo" });
       throw error;
     }
   }
@@ -162,9 +172,9 @@ export class CameraService extends EventEmitter {
    */
   private async captureDetectionFrame(): Promise<DetectionFrame> {
     const photo = await this.takePhoto();
-    
+
     if (!photo.base64String) {
-      throw new Error('No image data received');
+      throw new Error("No image data received");
     }
 
     const imageData = photo.base64String;
@@ -176,10 +186,14 @@ export class CameraService extends EventEmitter {
       imageData: imageData,
       width: this.currentSettings.width,
       height: this.currentSettings.height,
-      fileSize: fileSize
+      fileSize: fileSize,
     };
 
-    console.log(`📸 Photo captured: ${frame.width}x${frame.height}, ${this.formatFileSize(frame.fileSize)}`);
+    console.log(
+      `📸 Photo captured: ${frame.width}x${frame.height}, ${this.formatFileSize(
+        frame.fileSize
+      )}`
+    );
     return frame;
   }
 
@@ -187,9 +201,11 @@ export class CameraService extends EventEmitter {
    * Start continuous camera capture for real-time detection
    * @param intervalMs - Interval between captures in milliseconds (default: 2000ms)
    */
-  public async startContinuousCapture(intervalMs: number = 2000): Promise<void> {
+  public async startContinuousCapture(
+    intervalMs: number = 2000
+  ): Promise<void> {
     if (this.cameraStatus.isCapturing) {
-      console.warn('Camera capture is already running');
+      console.warn("Camera capture is already running");
       return;
     }
 
@@ -204,8 +220,8 @@ export class CameraService extends EventEmitter {
       try {
         await this.captureAndAnalyze();
       } catch (error) {
-        console.error('Error during continuous capture:', error);
-        this.emit('captureError', error);
+        console.error("Error during continuous capture:", error);
+        this.emit("captureError", error);
       }
     }, intervalMs);
   }
@@ -220,7 +236,7 @@ export class CameraService extends EventEmitter {
     }
 
     this.updateStatus({ isCapturing: false });
-    console.log('Continuous capture stopped');
+    console.log("Continuous capture stopped");
   }
 
   /**
@@ -229,27 +245,28 @@ export class CameraService extends EventEmitter {
   private async captureAndAnalyze(): Promise<void> {
     try {
       const frame = await this.captureDetectionFrame();
-      
+
       // Prepare detection request
       const detectionRequest = {
         image: frame.imageData,
-        model: 'yolo' as ModelType, // Default to YOLO for real-time processing
-        sessionId: this.generateSessionId()
+        model: "yolo" as ModelType, // Default to YOLO for real-time processing
+        sessionId: this.generateSessionId(),
       };
-      
+
       // Send to API for detection
-      const detectionResult = await this.apiService.detectDrowsiness(detectionRequest);
-      
+      const detectionResult = await this.apiService.detectDrowsiness(
+        detectionRequest
+      );
+
       // Emit detection result with frame info
-      this.emit('detectionResult', {
+      this.emit("detectionResult", {
         frame: frame,
         result: detectionResult,
-        alertLevel: this.getAlertLevel(detectionResult)
+        alertLevel: this.getAlertLevel(detectionResult),
       });
-
     } catch (error) {
-      console.error('Failed to analyze frame:', error);
-      this.emit('analysisError', error);
+      console.error("Failed to analyze frame:", error);
+      this.emit("analysisError", error);
     }
   }
 
@@ -257,30 +274,33 @@ export class CameraService extends EventEmitter {
    * Process single photo for drowsiness detection
    * @param modelName - Model to use for detection (default: 'yolo')
    */
-  public async analyzeSinglePhoto(modelName: string = 'yolo'): Promise<DetectionResult> {
+  public async analyzeSinglePhoto(
+    modelName: string = "yolo"
+  ): Promise<DetectionResult> {
     try {
       const frame = await this.captureDetectionFrame();
-      
+
       // Prepare detection request
       const detectionRequest = {
         image: frame.imageData,
         model: modelName as ModelType,
-        sessionId: this.generateSessionId()
+        sessionId: this.generateSessionId(),
       };
-      
+
       // Send to specific model endpoint
-      const detectionResult = await this.apiService.detectDrowsiness(detectionRequest);
-      
-      this.emit('singleDetection', {
+      const detectionResult = await this.apiService.detectDrowsiness(
+        detectionRequest
+      );
+
+      this.emit("singleDetection", {
         frame: frame,
         result: detectionResult,
-        modelUsed: modelName
+        modelUsed: modelName,
       });
 
       return detectionResult;
-
     } catch (error) {
-      console.error('Failed to analyze single photo:', error);
+      console.error("Failed to analyze single photo:", error);
       throw error;
     }
   }
@@ -299,11 +319,11 @@ export class CameraService extends EventEmitter {
   public updateSettings(newSettings: Partial<CameraSettings>): void {
     this.currentSettings = {
       ...this.currentSettings,
-      ...newSettings
+      ...newSettings,
     };
-    
-    console.log('Camera settings updated:', this.currentSettings);
-    this.emit('settingsChanged', this.currentSettings);
+
+    console.log("Camera settings updated:", this.currentSettings);
+    this.emit("settingsChanged", this.currentSettings);
   }
 
   /**
@@ -320,17 +340,19 @@ export class CameraService extends EventEmitter {
   private updateStatus(updates: Partial<CameraStatus>): void {
     this.cameraStatus = {
       ...this.cameraStatus,
-      ...updates
+      ...updates,
     };
-    
-    this.emit('statusChanged', this.cameraStatus);
+
+    this.emit("statusChanged", this.cameraStatus);
   }
 
   /**
    * Generate unique session ID
    */
   private generateSessionId(): string {
-    return `cam_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `cam_session_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
   }
 
   /**
@@ -344,27 +366,27 @@ export class CameraService extends EventEmitter {
    * Format file size in human readable format
    */
   private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
+    if (bytes === 0) return "0 Bytes";
+
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
   /**
    * Determine alert level based on detection result
    */
   private getAlertLevel(result: DetectionResult): number {
-    if (result.status !== 'success' || !result.isDrowsy) {
+    if (result.status !== "success" || !result.isDrowsy) {
       return 0; // No alert if not drowsy or failed detection
     }
 
     // Alert level based on confidence score
-    if (result.confidence >= 0.8) return 3;  // High alert
-    if (result.confidence >= 0.6) return 2;  // Medium alert
-    if (result.confidence >= 0.4) return 1;  // Low alert
+    if (result.confidence >= 0.8) return 3; // High alert
+    if (result.confidence >= 0.6) return 2; // Medium alert
+    if (result.confidence >= 0.4) return 1; // Low alert
     return 0; // No alert
   }
 
@@ -391,7 +413,7 @@ export class CameraService extends EventEmitter {
       isCapturing: this.cameraStatus.isCapturing,
       lastCaptureTime: this.cameraStatus.lastCaptureTime,
       currentSettings: this.getCurrentSettings(),
-      status: this.getStatus()
+      status: this.getStatus(),
     };
   }
 }
