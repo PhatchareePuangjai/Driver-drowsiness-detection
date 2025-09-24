@@ -18,6 +18,7 @@ const CameraTest: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<string>("unknown");
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const [detectionResult, setDetectionResult] = useState<any>(null); // Store detection result
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -209,6 +210,10 @@ const CameraTest: React.FC = () => {
   };
 
   const takePicture = async () => {
+    // Clear previous results
+    setDetectionResult(null);
+    setError(null);
+    
     if (isWeb) {
       return takeWebPhoto();
     } else {
@@ -217,6 +222,10 @@ const CameraTest: React.FC = () => {
   };
 
   const requestPermissions = async () => {
+    // Clear previous results
+    setDetectionResult(null);
+    setError(null);
+    
     if (isWeb) {
       return initializeWebCamera();
     }
@@ -267,11 +276,15 @@ const CameraTest: React.FC = () => {
         const result = await response.json();
         addDebugInfo(`✅ Backend response received`);
 
+        // Store the detection result
+        setDetectionResult(result);
+
         const alertMsg = `Detection Result:\n${
           result.isDrowsy ? "😴 DROWSY" : "😊 ALERT"
         }\nConfidence: ${(result.confidence * 100).toFixed(1)}%\nModel: ${
           result.modelUsed || "Mock"
         }\nClass: ${result.className || "N/A"}`;
+        
         setError(alertMsg);
         setShowAlert(true);
       } else {
@@ -335,26 +348,50 @@ const CameraTest: React.FC = () => {
 
         {error && (
           <IonText
-            color={error.includes("Detection Result") ? "success" : "danger"}
+            color={
+              error.includes("Detection Result") 
+                ? (detectionResult?.isDrowsy ? "danger" : "success")
+                : "danger"
+            }
           >
             <p
               style={{
                 whiteSpace: "pre-line",
                 padding: "12px",
                 backgroundColor: error.includes("Detection Result")
-                  ? "#e8f5e8"
+                  ? (detectionResult?.isDrowsy ? "#ffeaea" : "#e8f5e8")
                   : "#ffe6e6",
                 borderRadius: "8px",
                 margin: "12px 0",
+                border: error.includes("Detection Result") && detectionResult?.isDrowsy
+                  ? "2px solid #ef4444"
+                  : "1px solid #ccc",
               }}
             >
-              <strong>
+              <strong
+                style={{
+                  color: error.includes("Detection Result") && detectionResult?.isDrowsy
+                    ? "#dc2626"
+                    : "inherit"
+                }}
+              >
                 {error.includes("Detection Result")
-                  ? "🎯 Result:"
+                  ? (detectionResult?.isDrowsy ? "🚨 DROWSY DETECTED:" : "🎯 Result:")
                   : "❌ Error:"}
               </strong>
               <br />
-              {error}
+              <span
+                style={{
+                  color: error.includes("Detection Result") && detectionResult?.isDrowsy
+                    ? "#dc2626"
+                    : "inherit",
+                  fontWeight: error.includes("Detection Result") && detectionResult?.isDrowsy
+                    ? "bold"
+                    : "normal"
+                }}
+              >
+                {error}
+              </span>
             </p>
           </IonText>
         )}
