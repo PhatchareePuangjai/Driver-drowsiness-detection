@@ -213,7 +213,7 @@ const CameraTest: React.FC = () => {
     // Clear previous results
     setDetectionResult(null);
     setError(null);
-    
+
     if (isWeb) {
       return takeWebPhoto();
     } else {
@@ -225,7 +225,7 @@ const CameraTest: React.FC = () => {
     // Clear previous results
     setDetectionResult(null);
     setError(null);
-    
+
     if (isWeb) {
       return initializeWebCamera();
     }
@@ -284,7 +284,7 @@ const CameraTest: React.FC = () => {
         }\nConfidence: ${(result.confidence * 100).toFixed(1)}%\nModel: ${
           result.modelUsed || "Mock"
         }\nClass: ${result.className || "N/A"}`;
-        
+
         setError(alertMsg);
         setShowAlert(true);
       } else {
@@ -349,8 +349,10 @@ const CameraTest: React.FC = () => {
         {error && (
           <IonText
             color={
-              error.includes("Detection Result") 
-                ? (detectionResult?.isDrowsy ? "danger" : "success")
+              error.includes("Detection Result")
+                ? detectionResult?.isDrowsy
+                  ? "danger"
+                  : "success"
                 : "danger"
             }
           >
@@ -359,35 +361,47 @@ const CameraTest: React.FC = () => {
                 whiteSpace: "pre-line",
                 padding: "12px",
                 backgroundColor: error.includes("Detection Result")
-                  ? (detectionResult?.isDrowsy ? "#ffeaea" : "#e8f5e8")
+                  ? detectionResult?.isDrowsy
+                    ? "#ffeaea"
+                    : "#e8f5e8"
                   : "#ffe6e6",
                 borderRadius: "8px",
                 margin: "12px 0",
-                border: error.includes("Detection Result") && detectionResult?.isDrowsy
-                  ? "2px solid #ef4444"
-                  : "1px solid #ccc",
+                border:
+                  error.includes("Detection Result") &&
+                  detectionResult?.isDrowsy
+                    ? "2px solid #ef4444"
+                    : "1px solid #ccc",
               }}
             >
               <strong
                 style={{
-                  color: error.includes("Detection Result") && detectionResult?.isDrowsy
-                    ? "#dc2626"
-                    : "inherit"
+                  color:
+                    error.includes("Detection Result") &&
+                    detectionResult?.isDrowsy
+                      ? "#dc2626"
+                      : "inherit",
                 }}
               >
                 {error.includes("Detection Result")
-                  ? (detectionResult?.isDrowsy ? "🚨 DROWSY DETECTED:" : "🎯 Result:")
+                  ? detectionResult?.isDrowsy
+                    ? "🚨 DROWSY DETECTED:"
+                    : "🎯 Result:"
                   : "❌ Error:"}
               </strong>
               <br />
               <span
                 style={{
-                  color: error.includes("Detection Result") && detectionResult?.isDrowsy
-                    ? "#dc2626"
-                    : "inherit",
-                  fontWeight: error.includes("Detection Result") && detectionResult?.isDrowsy
-                    ? "bold"
-                    : "normal"
+                  color:
+                    error.includes("Detection Result") &&
+                    detectionResult?.isDrowsy
+                      ? "#dc2626"
+                      : "inherit",
+                  fontWeight:
+                    error.includes("Detection Result") &&
+                    detectionResult?.isDrowsy
+                      ? "bold"
+                      : "normal",
                 }}
               >
                 {error}
