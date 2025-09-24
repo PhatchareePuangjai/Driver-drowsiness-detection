@@ -1,4 +1,4 @@
-# Flask Backend API for Drowsiness Detection (Mock Version)
+# Flask Backend API for Drowsiness Detection (Hybrid Version)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -9,8 +9,8 @@ from PIL import Image
 import logging
 from datetime import datetime
 
-# Import mock components (no heavy ML dependencies)
-from models.model_loader import model_loader
+# Import hybrid model loader (supports both real and mock models)
+from models.hybrid_model_loader import hybrid_model_loader
 from utils.response_formatter import ResponseFormatter
 
 # Initialize Flask app
@@ -28,14 +28,14 @@ response_formatter = ResponseFormatter()
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
-    models_info = model_loader.get_all_models()
+    models_info = hybrid_model_loader.get_all_models()
     return jsonify(
         response_formatter.format_health_response(
             status="healthy",
             models_loaded=models_info,
             additional_info={
                 "server": "Flask Development Server",
-                "mode": "mock_data",
+                "mode": "hybrid_mode",
                 "version": "1.0.0",
                 "supported_classes": 7,
             },
@@ -47,12 +47,12 @@ def health_check():
 def get_available_models():
     """Get list of available models with class information"""
     try:
-        models = model_loader.get_all_models()
+        models = hybrid_model_loader.get_all_models()
 
         # Add class information for each model
         models_with_classes = {}
         for model_name in models:
-            model_info = model_loader.get_model_info(model_name)
+            model_info = hybrid_model_loader.get_model_info(model_name)
             models_with_classes[model_name] = model_info
 
         return jsonify(response_formatter.format_models_response(models_with_classes))
@@ -126,7 +126,7 @@ def detect_drowsiness():
         start_time = datetime.utcnow()
 
         try:
-            result = model_loader.detect_drowsiness(pil_image, model_name)
+            result = hybrid_model_loader.detect_drowsiness(pil_image, model_name)
             inference_time = (datetime.utcnow() - start_time).total_seconds()
 
             # Add session and timing info
@@ -235,7 +235,7 @@ def detect_batch():
                 pil_image = Image.open(io.BytesIO(decoded_data))
 
                 # Run inference using unified method
-                result = model_loader.detect_drowsiness(pil_image, model_name)
+                result = hybrid_model_loader.detect_drowsiness(pil_image, model_name)
 
                 # Add batch-specific info
                 result["index"] = i
@@ -462,7 +462,7 @@ if __name__ == "__main__":
     logger.info("=" * 60)
     logger.info(f"📍 Server: http://{HOST}:{PORT}")
     logger.info(f"🔧 Debug mode: {DEBUG}")
-    logger.info(f"🤖 Models loaded: {len(model_loader.get_all_models())}")
+    logger.info(f"🤖 Models loaded: {len(hybrid_model_loader.get_all_models())}")
     logger.info(f"📋 Available endpoints:")
     logger.info(f"   • GET  /api/health")
     logger.info(f"   • GET  /api/models")

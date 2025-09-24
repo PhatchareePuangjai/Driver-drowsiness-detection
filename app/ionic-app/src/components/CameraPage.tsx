@@ -16,6 +16,7 @@ import {
   IonAlert,
   IonItem,
   IonLabel,
+  IonToggle,
   IonRange,
   IonSelect,
   IonSelectOption,
@@ -35,9 +36,9 @@ import {
 } from 'ionicons/icons';
 import { cameraService, CameraStatus, DetectionFrame } from '../app/services/camera.service';
 import { DetectionResult } from '../app/models/api.model';
-import './Tab1.css';
+import './CameraPage.css';
 
-const Tab1: React.FC = () => {
+const CameraPage: React.FC = () => {
   // State Management
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>({
     isInitialized: false,
@@ -416,4 +417,4 @@ const Tab1: React.FC = () => {
   );
 };
 
-export default Tab1;
+export default CameraPage;
