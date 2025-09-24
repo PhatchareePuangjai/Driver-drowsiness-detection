@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 
 # Import mock components (no heavy ML dependencies)
-from models.model_loader import ModelLoader
+from models.model_loader import model_loader
 from utils.response_formatter import ResponseFormatter
 
 # Initialize Flask app
@@ -22,29 +22,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize components
-model_loader = ModelLoader()
 response_formatter = ResponseFormatter()
-
-# Load models on startup
-try:
-    model_loader.load_all_models()
-    logger.info("All mock models loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading models: {e}")
 
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
-    models_loaded = model_loader.get_loaded_models()
+    models_info = model_loader.get_all_models()
     return jsonify(
         response_formatter.format_health_response(
             status="healthy",
-            models_loaded=models_loaded,
+            models_loaded=models_info,
             additional_info={
                 "server": "Flask Development Server",
                 "mode": "mock_data",
                 "version": "1.0.0",
+                "supported_classes": 7,
             },
         )
     )
@@ -52,9 +45,19 @@ def health_check():
 
 @app.route("/api/models", methods=["GET"])
 def get_available_models():
-    """Get list of available models"""
-    models = model_loader.get_model_info()
-    return jsonify(response_formatter.format_models_response(models))
+    """Get list of available models with class information"""
+    try:
+        models = model_loader.get_all_models()
+
+        # Add class information for each model
+        models_with_classes = {}
+        for model_name in models:
+            model_info = model_loader.get_model_info(model_name)
+            models_with_classes[model_name] = model_info
+
+        return jsonify(response_formatter.format_models_response(models_with_classes))
+    except Exception as e:
+        return jsonify(response_formatter.format_error_response(str(e))), 500
 
 
 @app.route("/api/detect", methods=["POST"])
@@ -73,7 +76,9 @@ def detect_drowsiness():
 
         if not data or "image" not in data:
             return (
-                jsonify(response_formatter._error_response("No image data provided")),
+                jsonify(
+                    response_formatter.format_error_response("No image data provided")
+                ),
                 400,
             )
 
@@ -83,11 +88,12 @@ def detect_drowsiness():
         session_id = data.get("sessionId")
 
         # Validate model name
-        if not model_loader.is_model_loaded(model_name):
+        available_models = ["yolo", "faster_rcnn", "vgg16"]
+        if model_name not in available_models:
             return (
                 jsonify(
-                    response_formatter._error_response(
-                        f"Model {model_name} not available"
+                    response_formatter.format_error_response(
+                        f"Model {model_name} not available. Available models: {available_models}"
                     )
                 ),
                 400,
@@ -109,62 +115,63 @@ def detect_drowsiness():
         except Exception as e:
             return (
                 jsonify(
-                    response_formatter._error_response("Invalid image data format")
-                ),
-                400,
-            )
-
-        # Get selected model
-        model = model_loader.get_model(model_name)
-
-        if model is None:
-            return (
-                jsonify(
-                    response_formatter._error_response(
-                        f"Model {model_name} not available"
+                    response_formatter.format_error_response(
+                        "Invalid image data format"
                     )
                 ),
                 400,
             )
 
-        # Run mock inference
+        # Run mock inference using the unified method
         start_time = datetime.utcnow()
 
-        if model_name == "yolo":
-            is_drowsy, confidence, bbox = model.detect_drowsiness(pil_image)
-        elif model_name == "faster_rcnn":
-            is_drowsy, confidence, bbox = model.predict(pil_image)
-        elif model_name == "vgg16":
-            is_drowsy, confidence = model.classify(pil_image)
-            bbox = None
-        else:
+        try:
+            result = model_loader.detect_drowsiness(pil_image, model_name)
+            inference_time = (datetime.utcnow() - start_time).total_seconds()
+
+            # Add session and timing info
+            result["sessionId"] = session_id
+            result["inference_time_seconds"] = round(inference_time, 3)
+
+            # Create alert level based on class
+            if result["is_drowsy"]:
+                if result["class_name"] in ["SleepyDriving", "Yawn"]:
+                    alert_level = "high"
+                    alert_message = f"Driver is {result['class_name'].lower()}! Immediate attention required."
+                elif result["class_name"] in ["DangerousDriving", "Drinking"]:
+                    alert_level = "critical"
+                    alert_message = f"Critical: {result['class_name']} detected! Pull over immediately."
+                else:
+                    alert_level = "medium"
+                    alert_message = (
+                        f"Warning: {result['class_name']} detected. Stay alert."
+                    )
+            else:
+                alert_level = "none"
+                alert_message = f"Driver appears {result['class_name'].lower().replace('-', ' ')}. Continue monitoring."
+
+            result["alert_level"] = alert_level
+            result["alert_message"] = alert_message
+
+            return jsonify(response_formatter.format_detection_response(result))
+
+        except Exception as e:
+            logger.error(f"Detection error: {str(e)}")
             return (
-                jsonify(response_formatter._error_response("Unsupported model type")),
-                400,
+                jsonify(
+                    response_formatter.format_error_response(
+                        f"Detection failed: {str(e)}"
+                    )
+                ),
+                500,
             )
-
-        inference_time = (datetime.utcnow() - start_time).total_seconds()
-
-        # Format response
-        response = response_formatter.format_detection_response(
-            is_drowsy=is_drowsy,
-            confidence=confidence,
-            bbox=bbox,
-            model_used=model_name,
-            inference_time=inference_time,
-            session_id=session_id,
-        )
-
-        logger.info(
-            f"Detection completed: {'DROWSY' if is_drowsy else 'ALERT'} "
-            f"(confidence: {confidence:.3f}, model: {model_name})"
-        )
-
-        return jsonify(response)
 
     except Exception as e:
         logger.error(f"Error in detection: {e}")
-        return jsonify(response_formatter._error_response("Internal server error")), 500
+        return (
+            jsonify(response_formatter.format_error_response("Internal server error")),
+            500,
+        )
 
 
 @app.route("/api/detect/batch", methods=["POST"])
@@ -182,7 +189,9 @@ def detect_batch():
 
         if not data or "images" not in data:
             return (
-                jsonify(response_formatter._error_response("No images data provided")),
+                jsonify(
+                    response_formatter.format_error_response("No images data provided")
+                ),
                 400,
             )
 
@@ -193,21 +202,20 @@ def detect_batch():
         if len(images_data) > 10:  # Limit batch size
             return (
                 jsonify(
-                    response_formatter._error_response(
+                    response_formatter.format_error_response(
                         "Batch size too large (max 10 images)"
                     )
                 ),
                 400,
             )
 
-        # Get model
-        model = model_loader.get_model(model_name)
-
-        if model is None:
+        # Validate model name
+        available_models = ["yolo", "faster_rcnn", "vgg16"]
+        if model_name not in available_models:
             return (
                 jsonify(
-                    response_formatter._error_response(
-                        f"Model {model_name} not available"
+                    response_formatter.format_error_response(
+                        f"Model {model_name} not available. Available models: {available_models}"
                     )
                 ),
                 400,
@@ -226,30 +234,41 @@ def detect_batch():
                 decoded_data = base64.b64decode(image_data)
                 pil_image = Image.open(io.BytesIO(decoded_data))
 
-                # Run inference
-                if model_name == "yolo":
-                    is_drowsy, confidence, bbox = model.detect_drowsiness(pil_image)
-                elif model_name == "faster_rcnn":
-                    is_drowsy, confidence, bbox = model.predict(pil_image)
-                elif model_name == "vgg16":
-                    is_drowsy, confidence = model.classify(pil_image)
-                    bbox = None
+                # Run inference using unified method
+                result = model_loader.detect_drowsiness(pil_image, model_name)
 
-                # Format individual result
-                result = response_formatter.format_detection_response(
-                    is_drowsy=is_drowsy,
-                    confidence=confidence,
-                    bbox=bbox,
-                    model_used=model_name,
-                    inference_time=0,  # Will calculate total time below
-                    session_id=session_id,
-                )
+                # Add batch-specific info
                 result["index"] = i
-                results.append(result)
+                result["sessionId"] = session_id
+
+                # Add alert level based on class
+                if result["is_drowsy"]:
+                    if result["class_name"] in ["SleepyDriving", "Yawn"]:
+                        alert_level = "high"
+                        alert_message = f"Driver is {result['class_name'].lower()}! Immediate attention required."
+                    elif result["class_name"] in ["DangerousDriving", "Drinking"]:
+                        alert_level = "critical"
+                        alert_message = f"Critical: {result['class_name']} detected! Pull over immediately."
+                    else:
+                        alert_level = "medium"
+                        alert_message = (
+                            f"Warning: {result['class_name']} detected. Stay alert."
+                        )
+                else:
+                    alert_level = "none"
+                    alert_message = f"Driver appears {result['class_name'].lower().replace('-', ' ')}. Continue monitoring."
+
+                result["alert_level"] = alert_level
+                result["alert_message"] = alert_message
+
+                # Format the result for consistency
+                formatted_result = response_formatter.format_detection_response(result)
+                formatted_result["index"] = i
+                results.append(formatted_result)
 
             except Exception as e:
                 logger.error(f"Error processing image {i}: {e}")
-                error_result = response_formatter._error_response(
+                error_result = response_formatter.format_error_response(
                     f"Error processing image {i}: {str(e)}"
                 )
                 error_result["index"] = i
@@ -273,7 +292,10 @@ def detect_batch():
 
     except Exception as e:
         logger.error(f"Error in batch detection: {e}")
-        return jsonify(response_formatter._error_response("Internal server error")), 500
+        return (
+            jsonify(response_formatter.format_error_response("Internal server error")),
+            500,
+        )
 
 
 # Session management endpoints (mock implementation)
@@ -303,7 +325,9 @@ def start_session():
     except Exception as e:
         logger.error(f"Error starting session: {e}")
         return (
-            jsonify(response_formatter._error_response("Failed to start session")),
+            jsonify(
+                response_formatter.format_error_response("Failed to start session")
+            ),
             500,
         )
 
@@ -317,7 +341,9 @@ def end_session():
 
         if not session_id:
             return (
-                jsonify(response_formatter._error_response("Session ID required")),
+                jsonify(
+                    response_formatter.format_error_response("Session ID required")
+                ),
                 400,
             )
 
@@ -341,7 +367,10 @@ def end_session():
 
     except Exception as e:
         logger.error(f"Error ending session: {e}")
-        return jsonify(response_formatter._error_response("Failed to end session")), 500
+        return (
+            jsonify(response_formatter.format_error_response("Failed to end session")),
+            500,
+        )
 
 
 @app.route("/api/session/history", methods=["GET"])
@@ -390,7 +419,9 @@ def get_session_history():
         logger.error(f"Error getting session history: {e}")
         return (
             jsonify(
-                response_formatter._error_response("Failed to get session history")
+                response_formatter.format_error_response(
+                    "Failed to get session history"
+                )
             ),
             500,
         )
@@ -399,7 +430,9 @@ def get_session_history():
 @app.errorhandler(404)
 def not_found(error):
     return (
-        jsonify(response_formatter._error_response("Endpoint not found", "NOT_FOUND")),
+        jsonify(
+            response_formatter.format_error_response("Endpoint not found", "NOT_FOUND")
+        ),
         404,
     )
 
@@ -408,7 +441,7 @@ def not_found(error):
 def internal_error(error):
     return (
         jsonify(
-            response_formatter._error_response(
+            response_formatter.format_error_response(
                 "Internal server error", "INTERNAL_ERROR"
             )
         ),
@@ -429,7 +462,7 @@ if __name__ == "__main__":
     logger.info("=" * 60)
     logger.info(f"📍 Server: http://{HOST}:{PORT}")
     logger.info(f"🔧 Debug mode: {DEBUG}")
-    logger.info(f"🤖 Models loaded: {len(model_loader.get_loaded_models())}")
+    logger.info(f"🤖 Models loaded: {len(model_loader.get_all_models())}")
     logger.info(f"📋 Available endpoints:")
     logger.info(f"   • GET  /api/health")
     logger.info(f"   • GET  /api/models")

@@ -16,49 +16,51 @@ class ResponseFormatter:
         self.default_confidence_threshold = 0.5
 
     def format_detection_response(
-        self,
-        is_drowsy: bool,
-        confidence: float,
-        bbox: Optional[Dict] = None,
-        model_used: str = "yolo",
-        inference_time: float = 0.0,
-        session_id: Optional[str] = None,
-        additional_data: Optional[Dict] = None,
+        self, detection_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Format detection result response
+        Format detection result response with 7-class classification
 
         Args:
-            is_drowsy: Whether drowsiness was detected
-            confidence: Confidence score (0.0 to 1.0)
-            bbox: Bounding box coordinates {x, y, width, height}
-            model_used: Name of the model used
-            inference_time: Time taken for inference in seconds
-            session_id: Optional session ID
-            additional_data: Any additional data to include
+            detection_result: Detection result from model_loader
 
         Returns:
             Formatted response dictionary
         """
         try:
             # Generate unique ID for this detection
-            detection_id = f"{model_used}_{int(datetime.utcnow().timestamp() * 1000)}"
+            detection_id = f"{detection_result['model_used']}_{int(datetime.utcnow().timestamp() * 1000)}"
 
-            # Determine if alert should be triggered
-            alert_triggered = is_drowsy and confidence > 0.7
+            # Determine alert level and message
+            is_drowsy = detection_result.get("is_drowsy", False)
+            confidence = detection_result.get("confidence", 0.0)
+            class_name = detection_result.get("class_name", "unknown")
+            class_id = detection_result.get("class_id", -1)
+
+            # Enhanced alert determination
+            alert_triggered = False
+            if is_drowsy and confidence > 0.6:
+                alert_triggered = True
 
             response = {
                 "id": detection_id,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": detection_result.get(
+                    "timestamp", datetime.utcnow().isoformat()
+                ),
                 "isDrowsy": is_drowsy,
                 "confidence": round(confidence, 3),
-                "modelUsed": model_used,
-                "inferenceTime": round(inference_time, 3),
+                "className": class_name,
+                "classId": class_id,
+                "modelUsed": detection_result.get("model_used", "unknown"),
+                "inferenceTime": detection_result.get("inference_time_seconds", 0.0),
                 "alertTriggered": alert_triggered,
+                "alertLevel": detection_result.get("alert_level", "none"),
+                "alertMessage": detection_result.get("alert_message", "No alert"),
                 "status": "success",
             }
 
             # Add bounding box if provided
+            bbox = detection_result.get("bbox")
             if bbox is not None:
                 response["bbox"] = {
                     "x": int(bbox.get("x", 0)),
@@ -68,18 +70,15 @@ class ResponseFormatter:
                 }
 
             # Add session ID if provided
+            session_id = detection_result.get("sessionId")
             if session_id:
                 response["sessionId"] = session_id
-
-            # Add any additional data
-            if additional_data:
-                response.update(additional_data)
 
             return response
 
         except Exception as e:
             logger.error(f"Error formatting detection response: {e}")
-            return self._error_response("Failed to format detection response")
+            return self.format_error_response("Failed to format detection response")
 
     def format_batch_response(
         self,
@@ -131,7 +130,7 @@ class ResponseFormatter:
 
         except Exception as e:
             logger.error(f"Error formatting batch response: {e}")
-            return self._error_response("Failed to format batch response")
+            return self.format_error_response("Failed to format batch response")
 
     def format_health_response(
         self,
@@ -164,7 +163,7 @@ class ResponseFormatter:
 
         except Exception as e:
             logger.error(f"Error formatting health response: {e}")
-            return self._error_response("Failed to format health response")
+            return self.format_error_response("Failed to format health response")
 
     def format_models_response(
         self, models: List[Dict], additional_info: Optional[Dict] = None
@@ -194,7 +193,7 @@ class ResponseFormatter:
 
         except Exception as e:
             logger.error(f"Error formatting models response: {e}")
-            return self._error_response("Failed to format models response")
+            return self.format_error_response("Failed to format models response")
 
     def format_session_response(
         self,
@@ -235,9 +234,9 @@ class ResponseFormatter:
 
         except Exception as e:
             logger.error(f"Error formatting session response: {e}")
-            return self._error_response("Failed to format session response")
+            return self.format_error_response("Failed to format session response")
 
-    def _error_response(
+    def format_error_response(
         self,
         message: str,
         error_code: Optional[str] = None,
@@ -287,7 +286,7 @@ class ResponseFormatter:
         if received_value is not None:
             details["receivedValue"] = str(received_value)
 
-        return self._error_response(
+        return self.format_error_response(
             f"Validation error in field '{field}': {message}",
             error_code="VALIDATION_ERROR",
             details=details,
