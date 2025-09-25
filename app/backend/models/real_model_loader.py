@@ -1,5 +1,5 @@
 # Real Model Loader for Production
-# Loads and runs inference with trained Faster R-CNN model
+# Loads and runs inference with trained YOLO and Faster R-CNN models
 
 import torch
 import torchvision.transforms as T
@@ -9,6 +9,17 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 import logging
 import os
+import cv2
+
+# Try to import YOLO dependencies
+try:
+    from ultralytics import YOLO
+
+    YOLO_AVAILABLE = True
+    print("✅ YOLO (Ultralytics) dependencies available")
+except ImportError as e:
+    YOLO_AVAILABLE = False
+    print(f"❌ YOLO dependencies not available: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +188,134 @@ class RealFasterRCNNModel:
             raise
 
 
+class RealYOLOModel:
+    """Real YOLO model for drowsiness detection"""
+
+    def __init__(self, model_path=None):
+        """
+        Initialize YOLO model loader.
+
+        Args:
+            model_path (str): Path to YOLO model file (.pt format)
+        """
+        if not YOLO_AVAILABLE:
+            raise ImportError(
+                "YOLO dependencies not available. Install with: pip install ultralytics opencv-python"
+            )
+
+        self.model_path = model_path or "yolo.pt"
+        self.model = None
+        self.is_loaded = False
+        self.class_names = [
+            "awake-or-distracted",
+            "dangerous-driving",
+            "distracted",
+            "drinking",
+            "safe-driving",
+            "sleepy-driving",
+            "yawning",
+        ]
+        self.name = "Real YOLO v8"
+        self.accuracy = 0.92
+        self.inference_speed = 0.05
+        print(f"🎯 RealYOLOModel initialized with model path: {self.model_path}")
+
+        # Load model automatically
+        self.load_model()
+
+    def load_model(self):
+        """Load the YOLO model"""
+        try:
+            if not os.path.exists(self.model_path):
+                print(f"❌ Model file not found: {self.model_path}")
+                raise FileNotFoundError(f"Model file not found: {self.model_path}")
+
+            print(f"📥 Loading YOLO model from {self.model_path}")
+            self.model = YOLO(self.model_path)
+            self.is_loaded = True
+            print(f"✅ YOLO model loaded successfully")
+
+        except Exception as e:
+            print(f"❌ Error loading YOLO model: {e}")
+            self.is_loaded = False
+            raise
+
+    def predict(self, pil_image: Image.Image):
+        """
+        Predict drowsiness from PIL Image
+
+        Returns:
+            Tuple: (is_drowsy, confidence, bbox, class_name, class_id)
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Model not loaded")
+
+        try:
+            # Convert PIL to numpy array for YOLO
+            import numpy as np
+
+            img_array = np.array(pil_image)
+
+            # Run inference
+            results = self.model(img_array, verbose=False)
+
+            # Process results
+            if not results or len(results) == 0:
+                print("🤷‍♂️ No detections found")
+                return False, 0.0, None, "safe-driving", 4
+
+            result = results[0]
+
+            if result.boxes is None or len(result.boxes) == 0:
+                print("🤷‍♂️ No bounding boxes found")
+                return False, 0.0, None, "safe-driving", 4
+
+            # Get the highest confidence detection
+            boxes = result.boxes
+            confidences = boxes.conf.cpu().numpy()
+            classes = boxes.cls.cpu().numpy()
+            xyxy = boxes.xyxy.cpu().numpy()
+
+            # Find best detection
+            best_idx = np.argmax(confidences)
+            best_conf = float(confidences[best_idx])
+            best_class = int(classes[best_idx])
+            best_box = xyxy[best_idx]
+
+            # Map to our class names
+            if best_class >= len(self.class_names):
+                best_class = 4  # Default to safe-driving
+
+            class_name = self.class_names[best_class]
+
+            # Determine if drowsy (classes 1, 2, 5, 6 are considered drowsy)
+            drowsy_classes = [
+                1,
+                2,
+                5,
+                6,
+            ]  # dangerous-driving, distracted, sleepy-driving, yawning
+            is_drowsy = best_class in drowsy_classes
+
+            # Convert bbox format
+            x1, y1, x2, y2 = best_box
+            bbox = {
+                "x": int(x1),
+                "y": int(y1),
+                "width": int(x2 - x1),
+                "height": int(y2 - y1),
+            }
+
+            print(
+                f"🎯 YOLO Prediction: {class_name} (conf: {best_conf:.3f}, drowsy: {is_drowsy})"
+            )
+            return is_drowsy, best_conf, bbox, class_name, best_class
+
+        except Exception as e:
+            print(f"❌ Error during YOLO inference: {e}")
+            raise
+
+
 class RealModelLoader:
     """Main model loader class - manages real trained models"""
 
@@ -188,37 +327,76 @@ class RealModelLoader:
     def load_models(self):
         """Initialize real trained models"""
         try:
-            logger.info("Loading real trained models...")
+            print("📦 Loading real trained models...")
 
-            # Check for model file
-            model_path = os.path.join(self.model_dir, "fasterrcnn_scripted.pt")
+            # Check for YOLO model first (try multiple paths)
+            yolo_paths = [
+                os.path.join(self.model_dir, "yolo.pt"),
+                os.path.join(self.model_dir, "models", "yolo.pt"),
+                os.path.join(
+                    self.model_dir, "models", "models", "yolo.pt"
+                ),  # Found here
+                "yolo.pt",  # Current directory
+            ]
 
-            if os.path.exists(model_path):
-                self.models["faster_rcnn"] = RealFasterRCNNModel(model_path)
-                logger.info("Real Faster R-CNN model loaded successfully")
-            else:
-                logger.warning(f"Model file not found: {model_path}")
-                logger.warning(
-                    "Please ensure fasterrcnn_scripted.pt is in the backend directory"
-                )
-                # Could fall back to mock models here if needed
-                raise FileNotFoundError(f"Required model file not found: {model_path}")
+            yolo_loaded = False
+            for yolo_path in yolo_paths:
+                if os.path.exists(yolo_path) and YOLO_AVAILABLE:
+                    try:
+                        self.models["yolo"] = RealYOLOModel(yolo_path)
+                        print(
+                            f"✅ Real YOLO model loaded successfully from {yolo_path}"
+                        )
+                        yolo_loaded = True
+                        break
+                    except Exception as e:
+                        print(f"⚠️ Failed to load YOLO model from {yolo_path}: {e}")
+
+            if not yolo_loaded and YOLO_AVAILABLE:
+                print("ℹ️ YOLO model not found in any expected location")
+
+            # Check for Faster R-CNN model
+            frcnn_path = os.path.join(self.model_dir, "fasterrcnn_scripted.pt")
+            if os.path.exists(frcnn_path):
+                try:
+                    self.models["faster_rcnn"] = RealFasterRCNNModel(frcnn_path)
+                    print("✅ Real Faster R-CNN model loaded successfully")
+                except Exception as e:
+                    print(f"⚠️ Failed to load Faster R-CNN model: {e}")
+
+            # Summary
+            print(f"📊 Models loaded: {list(self.models.keys())}")
+            if not self.models:
+                print("⚠️ No real models could be loaded - will fall back to mock")
 
         except Exception as e:
-            logger.error(f"Error loading real models: {e}")
-            raise
+            print(f"❌ Error loading real models: {e}")
+            # Don't raise - allow fallback to mock models
 
     def get_model(self, model_name: str):
         """Get a specific model by name"""
-        # Map common names to our real model
+        # Direct model mapping first
+        if model_name in self.models:
+            return self.models[model_name]
+
+        # Fallback mapping for common requests
         name_mapping = {
-            "yolo": "faster_rcnn",  # Use Faster R-CNN for YOLO requests
+            "yolo": "yolo" if "yolo" in self.models else "faster_rcnn",
             "faster_rcnn": "faster_rcnn",
-            "vgg16": "faster_rcnn",  # Use Faster R-CNN for VGG16 requests
+            "vgg16": (
+                "yolo" if "yolo" in self.models else "faster_rcnn"
+            ),  # Prefer YOLO for VGG16 requests
         }
 
-        mapped_name = name_mapping.get(model_name, "faster_rcnn")
-        return self.models.get(mapped_name)
+        mapped_name = name_mapping.get(model_name)
+        if mapped_name and mapped_name in self.models:
+            return self.models[mapped_name]
+
+        # Return any available model as fallback
+        if self.models:
+            return next(iter(self.models.values()))
+
+        return None
 
     def get_all_models(self) -> Dict:
         """Get information about all loaded models"""

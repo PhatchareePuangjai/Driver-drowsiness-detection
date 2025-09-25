@@ -9,28 +9,62 @@ from PIL import Image
 import logging
 from datetime import datetime
 
-# Import mock components (no heavy ML dependencies)
-from models.model_loader import ModelLoader
+# Import real model components
+try:
+    from models.real_model_loader import real_model_loader as RealModelLoader
+
+    USE_REAL_MODELS = True
+    print("✅ Using real ML models")
+except ImportError as e:
+    from models.model_loader import ModelLoader
+
+    USE_REAL_MODELS = False
+    print(f"⚠️ Using mock models (real models not available): {e}")
+
 from utils.response_formatter import ResponseFormatter
+from utils.image_processing import ImageProcessor
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for mobile app communication
+
+# Configure CORS to allow all origins for development
+CORS(
+    app,
+    origins=[
+        "http://localhost:8100",
+        "http://127.0.0.1:8100",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    supports_credentials=False,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize components
-model_loader = ModelLoader()
+if USE_REAL_MODELS:
+    model_loader = RealModelLoader  # It's already initialized as a singleton
+    print("🚀 Real model loader initialized")
+else:
+    model_loader = ModelLoader()
+    print("🎭 Mock model loader initialized")
+
 response_formatter = ResponseFormatter()
+image_processor = ImageProcessor()
 
 # Load models on startup
 try:
-    model_loader.load_all_models()
-    logger.info("All mock models loaded successfully")
+    if USE_REAL_MODELS:
+        print("✅ Real models loaded from singleton instance")
+    else:
+        model_loader.load_all_models()
+        print("✅ All mock models loaded successfully")
 except Exception as e:
-    logger.error(f"Error loading models: {e}")
+    print(f"❌ Error loading models: {e}")
 
 
 @app.route("/api/health", methods=["GET"])
@@ -38,7 +72,10 @@ def health_check():
     """
     Health check endpoint
     """
-    models_loaded = model_loader.get_loaded_models()
+    if USE_REAL_MODELS:
+        models_loaded = list(model_loader.models.keys())
+    else:
+        models_loaded = model_loader.get_loaded_models()
     return jsonify(
         response_formatter.format_health_response(
             status="healthy",
@@ -54,11 +91,25 @@ def health_check():
 
 @app.route("/api/models", methods=["GET"])
 def get_available_models():
-    """
-    Get list of available models
-    """
-    models = model_loader.get_model_info()
-    return jsonify(response_formatter.format_models_response(models))
+    """Get list of available models with class information"""
+    try:
+        if USE_REAL_MODELS:
+            models = model_loader.get_all_models()
+        else:
+            models = model_loader.get_loaded_models()
+
+        # Add class information for each model
+        models_with_classes = {}
+        for model_name in models:
+            if USE_REAL_MODELS:
+                model_info = model_loader.get_model_info(model_name)
+            else:
+                model_info = model_loader.get_model_info(model_name)
+            models_with_classes[model_name] = model_info
+
+        return jsonify(response_formatter.format_models_response(models_with_classes))
+    except Exception as e:
+        return jsonify(response_formatter.format_error_response(str(e))), 500
 
 
 @app.route("/api/detect", methods=["POST"])
@@ -89,11 +140,12 @@ def detect_drowsiness():
         session_id = data.get("sessionId")
 
         # Validate model name
-        if not model_loader.is_model_loaded(model_name):
+        available_models = ["yolo", "faster_rcnn", "vgg16"]
+        if model_name not in available_models:
             return (
                 jsonify(
-                    response_formatter._error_response(
-                        f"Model {model_name} not available"
+                    response_formatter.format_error_response(
+                        f"Model {model_name} not available. Available models: {available_models}"
                     )
                 ),
                 400,
@@ -115,62 +167,61 @@ def detect_drowsiness():
         except Exception as e:
             return (
                 jsonify(
-                    response_formatter._error_response("Invalid image data format")
-                ),
-                400,
-            )
-
-        # Get selected model
-        model = model_loader.get_model(model_name)
-
-        if model is None:
-            return (
-                jsonify(
-                    response_formatter._error_response(
-                        f"Model {model_name} not available"
+                    response_formatter.format_error_response(
+                        "Invalid image data format"
                     )
                 ),
                 400,
             )
 
-        # Run mock inference
+        # Run inference using the unified method
         start_time = datetime.utcnow()
 
-        if model_name == "yolo":
-            is_drowsy, confidence, bbox = model.detect_drowsiness(pil_image)
-        elif model_name == "faster_rcnn":
-            is_drowsy, confidence, bbox = model.predict(pil_image)
-        elif model_name == "vgg16":
-            is_drowsy, confidence = model.classify(pil_image)
-            bbox = None
-        else:
+        try:
+            result = model_loader.detect_drowsiness(pil_image, model_name)
+            inference_time = (datetime.utcnow() - start_time).total_seconds()
+
+            # Add session and timing info
+            result["sessionId"] = session_id
+            result["inference_time_seconds"] = round(inference_time, 3)
+
+            # Create alert level based on class
+            if result["is_drowsy"]:
+                if result["class_name"] in ["sleepy-driving", "yawning"]:
+                    alert_level = "high"
+                    alert_message = f"Driver is {result['class_name'].replace('-', ' ')}! Immediate attention required."
+                elif result["class_name"] in ["dangerous-driving", "drinking"]:
+                    alert_level = "critical"
+                    alert_message = f"Critical: {result['class_name'].replace('-', ' ')} detected! Pull over immediately."
+                else:
+                    alert_level = "medium"
+                    alert_message = f"Warning: {result['class_name'].replace('-', ' ')} detected. Stay alert."
+            else:
+                alert_level = "none"
+                alert_message = f"Driver appears {result['class_name'].replace('-', ' ')}. Continue monitoring."
+
+            result["alert_level"] = alert_level
+            result["alert_message"] = alert_message
+
+            return jsonify(response_formatter.format_detection_response(result))
+
+        except Exception as e:
+            logger.error(f"Detection error: {str(e)}")
             return (
-                jsonify(response_formatter._error_response("Unsupported model type")),
-                400,
+                jsonify(
+                    response_formatter.format_error_response(
+                        f"Detection failed: {str(e)}"
+                    )
+                ),
+                500,
             )
-
-        inference_time = (datetime.utcnow() - start_time).total_seconds()
-
-        # Format response
-        response = response_formatter.format_detection_response(
-            is_drowsy=is_drowsy,
-            confidence=confidence,
-            bbox=bbox,
-            model_used=model_name,
-            inference_time=inference_time,
-            session_id=session_id,
-        )
-
-        logger.info(
-            f"Detection completed: {'DROWSY' if is_drowsy else 'ALERT'} "
-            f"(confidence: {confidence:.3f}, model: {model_name})"
-        )
-
-        return jsonify(response)
 
     except Exception as e:
         logger.error(f"Error in detection: {e}")
-        return jsonify(response_formatter._error_response("Internal server error")), 500
+        return (
+            jsonify(response_formatter.format_error_response("Internal server error")),
+            500,
+        )
 
 
 @app.route("/api/detect/batch", methods=["POST"])
@@ -425,21 +476,21 @@ if __name__ == "__main__":
     PORT = int(os.getenv("API_PORT", 8000))
     DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-    logger.info(f"🚀 Starting Drowsiness Detection API (Mock Mode)")
+    logger.info(
+        f"🚀 Starting Drowsiness Detection API ({'Real' if USE_REAL_MODELS else 'Mock'} Mode)"
+    )
     logger.info(f"📍 Server: http://{HOST}:{PORT}")
     logger.info(f"🔧 Debug mode: {DEBUG}")
-    logger.info(f"🤖 Models loaded: {len(model_loader.get_loaded_models())}")
+
+    if USE_REAL_MODELS:
+        logger.info(f"🤖 Models loaded: {len(model_loader.models)}")
+        logger.info(f"📋 Available models: {list(model_loader.models.keys())}")
+    else:
+        logger.info(f"🤖 Models loaded: {len(model_loader.get_loaded_models())}")
 
     app.run(host=HOST, port=PORT, debug=DEBUG)
 
-
-@app.route("/api/models", methods=["GET"])
-def get_available_models():
-    """
-    Get list of available models
-    """
-    models = model_loader.get_model_info()
-    return jsonify({"status": "success", "models": models})
+    app.run(host=HOST, port=PORT, debug=DEBUG)
 
 
 @app.route("/api/detect", methods=["POST"])

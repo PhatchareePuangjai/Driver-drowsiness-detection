@@ -3,11 +3,19 @@
 
 import base64
 import io
-import cv2
 import numpy as np
 from PIL import Image
 import logging
 from typing import Optional, Tuple, Any
+
+# Try to import cv2 (OpenCV) - make it optional
+try:
+    import cv2
+
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    print("⚠️ OpenCV (cv2) not available - some features may be limited")
 
 logger = logging.getLogger(__name__)
 
