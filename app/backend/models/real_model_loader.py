@@ -23,26 +23,25 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-# Define the 7 classes from your trained model
+# Define the 6 classes from your trained model (Updated based on actual YOLO model output)
 DRIVER_CLASSES = [
-    "awake-or-distracted",  # 0
-    "dangerous-driving",  # 1 (changed from DangerousDriving to match notebook)
-    "distracted",  # 2
-    "drinking",  # 3
-    "safe-driving",  # 4 (changed from SafeDriving to match notebook)
-    "sleepy-driving",  # 5 (changed from SleepyDriving to match notebook)
-    "yawning",  # 6 (changed from Yawn to match notebook)
+    "dangerous-driving",  # 0 - DangerousDriving
+    "distracted",  # 1 - Distracted
+    "drinking",  # 2 - Drinking
+    "safe-driving",  # 3 - SafeDriving
+    "sleepy-driving",  # 4 - SleepyDriving
+    "yawning",  # 5 - Yawn
 ]
 
 # Classes that indicate drowsiness/danger - need alert
 DROWSY_CLASSES = [
-    1,
-    2,
-    3,
-    5,
-    6,
-]  # dangerous-driving, distracted, drinking, sleepy-driving, yawning
-SAFE_CLASSES = [0, 4]  # awake-or-distracted, safe-driving
+    0,  # dangerous-driving
+    1,  # distracted
+    2,  # drinking
+    4,  # sleepy-driving
+    5,  # yawning
+]
+SAFE_CLASSES = [3]  # safe-driving
 
 
 class RealFasterRCNNModel:
@@ -206,15 +205,6 @@ class RealYOLOModel:
         self.model_path = model_path or "yolo.pt"
         self.model = None
         self.is_loaded = False
-        self.class_names = [
-            "awake-or-distracted",
-            "dangerous-driving",
-            "distracted",
-            "drinking",
-            "safe-driving",
-            "sleepy-driving",
-            "yawning",
-        ]
         self.name = "Real YOLO v8"
         self.accuracy = 0.92
         self.inference_speed = 0.05
@@ -281,20 +271,16 @@ class RealYOLOModel:
             best_conf = float(confidences[best_idx])
             best_class = int(classes[best_idx])
             best_box = xyxy[best_idx]
+            class_names = result.names
 
-            # Map to our class names
-            if best_class >= len(self.class_names):
-                best_class = 4  # Default to safe-driving
-
-            class_name = self.class_names[best_class]
-
-            # Determine if drowsy (classes 1, 2, 5, 6 are considered drowsy)
+            class_name = class_names.get(best_class, "unknown")
             drowsy_classes = [
-                1,
-                2,
-                5,
-                6,
-            ]  # dangerous-driving, distracted, sleepy-driving, yawning
+                0,  # dangerous-driving
+                1,  # distracted
+                2,  # drinking
+                4,  # sleepy-driving
+                5,  # yawning
+            ]
             is_drowsy = best_class in drowsy_classes
 
             # Convert bbox format
@@ -433,7 +419,7 @@ class RealModelLoader:
     ) -> Dict[str, Any]:
         """
         Perform drowsiness detection using real trained model
-        Returns standardized result format
+        Returns standardized best_idx format
         """
         model = self.get_model(model_name)
         if not model:
@@ -441,7 +427,9 @@ class RealModelLoader:
 
         try:
             is_drowsy, confidence, bbox, class_name, class_id = model.predict(image)
-
+            print(
+                f"Detection results - Is Drowsy: {is_drowsy}, Confidence: {confidence}"
+            )
             return {
                 "is_drowsy": is_drowsy,
                 "confidence": confidence,

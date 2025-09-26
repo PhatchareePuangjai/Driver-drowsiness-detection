@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 # Define the 7 classes from the trained model
 DRIVER_CLASSES = [
-    "awake-or-distracted",  # 0
-    "dangerous-driving",  # 1 (DangerousDriving)
-    "distracted",  # 2
-    "drinking",  # 3
-    "safe-driving",  # 4 (SafeDriving)
-    "sleepy-driving",  # 5 (SleepyDriving)
-    "yawning",  # 6 (Yawn)
+    "awake-or-distracted",  # 0 ตื่นหรือวอกแวก
+    "dangerous-driving",  # 1 (DangerousDriving) (เช่น ใช้โทรศัพท์)
+    "distracted",  # 2 (Distracted) (เช่น มองไปทางอื่น)
+    "drinking",  # 3 (Drinking) (เช่น ดื่มน้ำ)
+    "safe-driving",  # 4 (SafeDriving) (เช่น ขับรถอย่างปลอดภัย)
+    "sleepy-driving",  # 5 (SleepyDriving) (เช่น ขับรถอย่างง่วง)
+    "yawning",  # 6 (Yawn) (เช่น หาว)
 ]
 
 # Classes that indicate drowsiness/danger - need alert

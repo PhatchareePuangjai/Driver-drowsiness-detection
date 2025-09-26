@@ -115,29 +115,123 @@ def get_available_models():
 @app.route("/api/detect", methods=["POST"])
 def detect_drowsiness():
     """
-    Main detection endpoint
+    Main detection endpoint - supports both JSON and form-data
 
-    Expected JSON:
+    JSON format:
     {
         "image": "base64_encoded_image",
         "model": "yolo|faster_rcnn|vgg16" (optional, default: yolo),
-        "sessionId": "optional_session_id"
+        "sessionId": "optional_session_id",
+        "confidence_threshold": 0.5 (optional)
     }
+
+    Form-data format (from Postman):
+    - image: file upload
+    - model: yolo|faster_rcnn|vgg16 (optional, default: yolo)
+    - sessionId: optional_session_id (optional)
+    - confidence_threshold: 0.5 (optional)
     """
     try:
-        # Get request data
-        data = request.get_json()
+        pil_image = None
+        model_name = "yolo"
+        session_id = None
+        confidence_threshold = 0.5
 
-        if not data or "image" not in data:
-            return (
-                jsonify(response_formatter._error_response("No image data provided")),
-                400,
-            )
+        # Check if request is form-data (multipart) or JSON
+        if request.content_type and request.content_type.startswith(
+            "multipart/form-data"
+        ):
+            # Handle form-data request (from Postman file upload)
+            logger.info("Handling form-data request")
 
-        # Extract parameters
-        image_data = data["image"]
-        model_name = data.get("model", "yolo")
-        session_id = data.get("sessionId")
+            # Get file from form
+            if "image" not in request.files:
+                return (
+                    jsonify(
+                        response_formatter.format_error_response(
+                            "No image file provided in form-data"
+                        )
+                    ),
+                    400,
+                )
+
+            file = request.files["image"]
+            if file.filename == "":
+                return (
+                    jsonify(
+                        response_formatter.format_error_response(
+                            "No image file selected"
+                        )
+                    ),
+                    400,
+                )
+
+            # Get other form parameters
+            model_name = request.form.get("model", "yolo")
+            session_id = request.form.get("sessionId")
+            confidence_threshold = float(request.form.get("confidence_threshold", 0.5))
+
+            # Read image file directly
+            try:
+                pil_image = Image.open(file.stream)
+                logger.info(
+                    f"Received image from form-data: {pil_image.size}, format: {pil_image.format}"
+                )
+            except Exception as e:
+                return (
+                    jsonify(
+                        response_formatter.format_error_response(
+                            f"Invalid image file: {str(e)}"
+                        )
+                    ),
+                    400,
+                )
+
+        else:
+            # Handle JSON request
+            logger.info("Handling JSON request")
+            data = request.get_json()
+
+            if not data or "image" not in data:
+                return (
+                    jsonify(
+                        response_formatter.format_error_response(
+                            "No image data provided"
+                        )
+                    ),
+                    400,
+                )
+
+            # Extract parameters
+            image_data = data["image"]
+            model_name = data.get("model", "yolo")
+            session_id = data.get("sessionId")
+            confidence_threshold = float(data.get("confidence_threshold", 0.5))
+
+            # Simple validation of base64 image data
+            try:
+                # Remove data URL prefix if present
+                if "," in image_data:
+                    image_data = image_data.split(",")[1]
+
+                # Try to decode base64
+                decoded_data = base64.b64decode(image_data)
+
+                # Try to open as PIL image
+                pil_image = Image.open(io.BytesIO(decoded_data))
+                logger.info(
+                    f"Received image from JSON: {pil_image.size}, format: {pil_image.format}"
+                )
+
+            except Exception as e:
+                return (
+                    jsonify(
+                        response_formatter.format_error_response(
+                            f"Invalid image data format: {str(e)}"
+                        )
+                    ),
+                    400,
+                )
 
         # Validate model name
         available_models = ["yolo", "faster_rcnn", "vgg16"]
@@ -151,24 +245,12 @@ def detect_drowsiness():
                 400,
             )
 
-        # Simple validation of base64 image data
-        try:
-            # Remove data URL prefix if present
-            if "," in image_data:
-                image_data = image_data.split(",")[1]
-
-            # Try to decode base64
-            decoded_data = base64.b64decode(image_data)
-
-            # Try to open as PIL image
-            pil_image = Image.open(io.BytesIO(decoded_data))
-            logger.info(f"Received image: {pil_image.size}, format: {pil_image.format}")
-
-        except Exception as e:
+        # Validate confidence threshold
+        if confidence_threshold < 0.0 or confidence_threshold > 1.0:
             return (
                 jsonify(
                     response_formatter.format_error_response(
-                        "Invalid image data format"
+                        "confidence_threshold must be between 0.0 and 1.0"
                     )
                 ),
                 400,
@@ -181,9 +263,18 @@ def detect_drowsiness():
             result = model_loader.detect_drowsiness(pil_image, model_name)
             inference_time = (datetime.utcnow() - start_time).total_seconds()
 
+            # Apply confidence threshold
+            if result.get("confidence", 0) < confidence_threshold:
+                result["is_drowsy"] = False
+                result["class_name"] = "normal-driving"
+                logger.info(
+                    f"Result filtered by confidence threshold: {result.get('confidence', 0)} < {confidence_threshold}"
+                )
+
             # Add session and timing info
             result["sessionId"] = session_id
             result["inference_time_seconds"] = round(inference_time, 3)
+            result["confidence_threshold"] = confidence_threshold
 
             # Create alert level based on class
             if result["is_drowsy"]:
@@ -202,6 +293,10 @@ def detect_drowsiness():
 
             result["alert_level"] = alert_level
             result["alert_message"] = alert_message
+
+            logger.info(
+                f"Detection completed: {result.get('class_name', 'unknown')} (confidence: {result.get('confidence', 0):.2f})"
+            )
 
             return jsonify(response_formatter.format_detection_response(result))
 
@@ -487,220 +582,5 @@ if __name__ == "__main__":
         logger.info(f"📋 Available models: {list(model_loader.models.keys())}")
     else:
         logger.info(f"🤖 Models loaded: {len(model_loader.get_loaded_models())}")
-
-    app.run(host=HOST, port=PORT, debug=DEBUG)
-
-    app.run(host=HOST, port=PORT, debug=DEBUG)
-
-
-@app.route("/api/detect", methods=["POST"])
-def detect_drowsiness():
-    """
-    Main detection endpoint
-
-    Expected JSON:
-    {
-        "image": "base64_encoded_image",
-        "model": "yolo|faster_rcnn|vgg16" (optional, default: yolo)
-    }
-    """
-    try:
-        # Get request data
-        data = request.get_json()
-
-        if not data or "image" not in data:
-            return (
-                jsonify({"status": "error", "message": "No image data provided"}),
-                400,
-            )
-
-        # Decode base64 image
-        image_data = data["image"]
-        model_name = data.get("model", "yolo")
-
-        # Convert base64 to image
-        image = image_processor.decode_base64_image(image_data)
-
-        if image is None:
-            return jsonify({"status": "error", "message": "Invalid image data"}), 400
-
-        # Get selected model
-        model = model_loader.get_model(model_name)
-
-        if model is None:
-            return (
-                jsonify(
-                    {"status": "error", "message": f"Model {model_name} not available"}
-                ),
-                400,
-            )
-
-        # Preprocess image
-        processed_image = image_processor.preprocess_for_model(image, model_name)
-
-        # Run inference
-        start_time = datetime.utcnow()
-
-        if model_name == "yolo":
-            is_drowsy, confidence, bbox = model.detect_drowsiness(image)
-        elif model_name == "faster_rcnn":
-            is_drowsy, confidence, bbox = model.predict(processed_image)
-        elif model_name == "vgg16":
-            is_drowsy, confidence = model.classify(processed_image)
-            bbox = None
-        else:
-            return (
-                jsonify({"status": "error", "message": "Unsupported model type"}),
-                400,
-            )
-
-        inference_time = (datetime.utcnow() - start_time).total_seconds()
-
-        # Format response
-        response = response_formatter.format_detection_response(
-            is_drowsy=is_drowsy,
-            confidence=confidence,
-            bbox=bbox,
-            model_used=model_name,
-            inference_time=inference_time,
-        )
-
-        logger.info(
-            f"Detection completed: {response['status']} (confidence: {confidence:.2f})"
-        )
-
-        return jsonify(response)
-
-    except Exception as e:
-        logger.error(f"Error in detection: {e}")
-        return jsonify({"status": "error", "message": "Internal server error"}), 500
-
-
-@app.route("/api/detect/batch", methods=["POST"])
-def detect_batch():
-    """
-    Batch detection endpoint for multiple images
-
-    Expected JSON:
-    {
-        "images": ["base64_1", "base64_2", ...],
-        "model": "yolo|faster_rcnn|vgg16" (optional)
-    }
-    """
-    try:
-        data = request.get_json()
-
-        if not data or "images" not in data:
-            return (
-                jsonify({"status": "error", "message": "No images data provided"}),
-                400,
-            )
-
-        images_data = data["images"]
-        model_name = data.get("model", "yolo")
-
-        if len(images_data) > 10:  # Limit batch size
-            return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Batch size too large (max 10 images)",
-                    }
-                ),
-                400,
-            )
-
-        # Get model
-        model = model_loader.get_model(model_name)
-
-        if model is None:
-            return (
-                jsonify(
-                    {"status": "error", "message": f"Model {model_name} not available"}
-                ),
-                400,
-            )
-
-        # Process each image
-        results = []
-        start_time = datetime.utcnow()
-
-        for i, image_data in enumerate(images_data):
-            try:
-                # Decode and process image
-                image = image_processor.decode_base64_image(image_data)
-
-                if image is None:
-                    results.append(
-                        {"index": i, "status": "error", "message": "Invalid image data"}
-                    )
-                    continue
-
-                # Run inference
-                if model_name == "yolo":
-                    is_drowsy, confidence, bbox = model.detect_drowsiness(image)
-                elif model_name == "faster_rcnn":
-                    processed_image = image_processor.preprocess_for_model(
-                        image, model_name
-                    )
-                    is_drowsy, confidence, bbox = model.predict(processed_image)
-                elif model_name == "vgg16":
-                    processed_image = image_processor.preprocess_for_model(
-                        image, model_name
-                    )
-                    is_drowsy, confidence = model.classify(processed_image)
-                    bbox = None
-
-                # Add result
-                result = response_formatter.format_detection_response(
-                    is_drowsy=is_drowsy,
-                    confidence=confidence,
-                    bbox=bbox,
-                    model_used=model_name,
-                    inference_time=0,  # Will calculate total time below
-                )
-                result["index"] = i
-                results.append(result)
-
-            except Exception as e:
-                logger.error(f"Error processing image {i}: {e}")
-                results.append({"index": i, "status": "error", "message": str(e)})
-
-        total_time = (datetime.utcnow() - start_time).total_seconds()
-
-        return jsonify(
-            {
-                "status": "success",
-                "results": results,
-                "total_inference_time": total_time,
-                "model_used": model_name,
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error in batch detection: {e}")
-        return jsonify({"status": "error", "message": "Internal server error"}), 500
-
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({"status": "error", "message": "Endpoint not found"}), 404
-
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({"status": "error", "message": "Internal server error"}), 500
-
-
-if __name__ == "__main__":
-    # Configuration
-    import os
-
-    HOST = os.getenv("API_HOST", "0.0.0.0")
-    PORT = int(os.getenv("API_PORT", 8000))
-    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
-
-    logger.info(f"Starting Drowsiness Detection API on {HOST}:{PORT}")
-    logger.info(f"Debug mode: {DEBUG}")
 
     app.run(host=HOST, port=PORT, debug=DEBUG)
