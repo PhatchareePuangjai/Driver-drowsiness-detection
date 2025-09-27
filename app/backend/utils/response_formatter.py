@@ -74,6 +74,11 @@ class ResponseFormatter:
             if session_id:
                 response["sessionId"] = session_id
 
+            # Add saved image path if provided
+            saved_image_path = detection_result.get("saved_image_path")
+            if saved_image_path:
+                response["savedImagePath"] = str(saved_image_path)
+
             return response
 
         except Exception as e:

@@ -23,25 +23,43 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-# Define the 6 classes from your trained model (Updated based on actual YOLO model output)
-DRIVER_CLASSES = [
-    "dangerous-driving",  # 0 - DangerousDriving
-    "distracted",  # 1 - Distracted
-    "drinking",  # 2 - Drinking
-    "safe-driving",  # 3 - SafeDriving
-    "sleepy-driving",  # 4 - SleepyDriving
-    "yawning",  # 5 - Yawn
-]
+# Helper utilities for class handling (name-based, model-agnostic)
+def _normalize_class_name(name: str) -> str:
+    """Normalize label names across datasets.
 
-# Classes that indicate drowsiness/danger - need alert
-DROWSY_CLASSES = [
-    0,  # dangerous-driving
-    1,  # distracted
-    2,  # drinking
-    4,  # sleepy-driving
-    5,  # yawning
-]
-SAFE_CLASSES = [3]  # safe-driving
+    - Converts CamelCase (e.g., SleepyDriving) to kebab-case (sleepy-driving)
+    - Replaces spaces/underscores with hyphens
+    - Lowercases
+    """
+    s = str(name or "").strip()
+    # Insert hyphen between camelCase boundaries: aB -> a-B
+    import re
+
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", s)
+    s = s.replace("_", "-").replace(" ", "-")
+    return s.lower()
+
+
+def _is_drowsy_class_name(name: str) -> bool:
+    n = _normalize_class_name(name)
+    # Expandable list of labels considered drowsy/unsafe
+    drowsy_set = {
+        "dangerous-driving",
+        "distracted",
+        "drinking",
+        "sleepy-driving",
+        "yawning",
+        # Common variants/synonyms
+        "sleepy",
+        "yawn",
+        "phone",
+        "texting",
+        # CamelCase normalized variants map to same tokens via _normalize
+        "dangerousdriving",  # for labels without separators
+        "sleepydriving",
+        "safedriving-unsafe",  # placeholder variant if datasets differ
+    }
+    return n in drowsy_set
 
 
 class RealFasterRCNNModel:
@@ -157,16 +175,15 @@ class RealFasterRCNNModel:
             best_score = scores[final_keep]
             best_label = labels[final_keep]
 
-            # Convert to class info
+            # Convert to class info (labels are dataset-dependent)
             class_id = int(best_label.item())
-            if class_id >= len(DRIVER_CLASSES):
-                class_id = 4  # Default to safe-driving
-
-            class_name = DRIVER_CLASSES[class_id]
+            # Without a dynamic mapping for Faster R-CNN, use label id as-is
+            # and a generic name string
+            class_name = str(class_id)
             confidence = float(best_score.item())
 
-            # Determine if drowsy
-            is_drowsy = class_id in DROWSY_CLASSES
+            # Determine if drowsy by name (unknown mapping → assume non-drowsy)
+            is_drowsy = _is_drowsy_class_name(class_name)
 
             # Convert bbox to format expected by API
             x1, y1, x2, y2 = best_box.tolist()
@@ -274,14 +291,8 @@ class RealYOLOModel:
             class_names = result.names
 
             class_name = class_names.get(best_class, "unknown")
-            drowsy_classes = [
-                0,  # dangerous-driving
-                1,  # distracted
-                2,  # drinking
-                4,  # sleepy-driving
-                5,  # yawning
-            ]
-            is_drowsy = best_class in drowsy_classes
+            # Determine drowsiness by class name
+            is_drowsy = _is_drowsy_class_name(class_name)
 
             # Convert bbox format
             x1, y1, x2, y2 = best_box
@@ -367,21 +378,14 @@ class RealModelLoader:
 
         # Fallback mapping for common requests
         name_mapping = {
-            "yolo": "yolo" if "yolo" in self.models else "faster_rcnn",
-            "faster_rcnn": "faster_rcnn",
-            "vgg16": (
-                "yolo" if "yolo" in self.models else "faster_rcnn"
-            ),  # Prefer YOLO for VGG16 requests
+            "yolo": "yolo" if "yolo" in self.models else None,
         }
 
         mapped_name = name_mapping.get(model_name)
         if mapped_name and mapped_name in self.models:
             return self.models[mapped_name]
 
-        # Return any available model as fallback
-        if self.models:
-            return next(iter(self.models.values()))
-
+        # No fallback to other architectures when only YOLO is supported
         return None
 
     def get_all_models(self) -> Dict:
@@ -402,20 +406,41 @@ class RealModelLoader:
         if not model:
             return None
 
+        model_type = (
+            "YOLOv8" if "yolo" in str(model.name).lower() else "Faster R-CNN"
+        )
+        # Build class info dynamically when possible (YOLO has model.names)
+        supported_classes: List[str] = []
+        drowsy_names: List[str] = []
+        safe_names: List[str] = []
+
+        try:
+            if hasattr(model, "model") and hasattr(model.model, "names"):
+                # Ultralytics mapping id->name
+                names_map = getattr(model.model, "names", {}) or {}
+                supported_classes = [str(v) for _, v in sorted(names_map.items())]
+                for n in supported_classes:
+                    if _is_drowsy_class_name(n):
+                        drowsy_names.append(n)
+                    else:
+                        safe_names.append(n)
+        except Exception:
+            pass
+
         return {
             "name": model.name,
             "is_loaded": model.is_loaded,
-            "accuracy": model.accuracy,
-            "inference_speed": model.inference_speed,
-            "supported_classes": DRIVER_CLASSES,
-            "drowsy_classes": [DRIVER_CLASSES[i] for i in DROWSY_CLASSES],
-            "safe_classes": [DRIVER_CLASSES[i] for i in SAFE_CLASSES],
-            "model_type": "Faster R-CNN",
-            "device": str(model.device),
+            "accuracy": getattr(model, "accuracy", None),
+            "inference_speed": getattr(model, "inference_speed", None),
+            "supported_classes": supported_classes,
+            "drowsy_classes": drowsy_names,
+            "safe_classes": safe_names,
+            "model_type": model_type,
+            "device": str(getattr(model, "device", "cpu")),
         }
 
     def detect_drowsiness(
-        self, image, model_name: str = "faster_rcnn"
+        self, image, model_name: str = "yolo"
     ) -> Dict[str, Any]:
         """
         Perform drowsiness detection using real trained model

@@ -92,23 +92,14 @@ class ImageProcessor:
 
         Args:
             image: OpenCV image array
-            model_name: Name of the model ('yolo', 'faster_rcnn', 'vgg16')
+            model_name: Name of the model. Currently optimized for 'yolo'.
 
         Returns:
             Preprocessed image array
         """
         try:
-            if model_name == "yolo":
-                return self._preprocess_yolo(image)
-            elif model_name == "faster_rcnn":
-                return self._preprocess_faster_rcnn(image)
-            elif model_name == "vgg16":
-                return self._preprocess_vgg16(image)
-            else:
-                logger.warning(
-                    f"Unknown model: {model_name}, using default preprocessing"
-                )
-                return self._preprocess_default(image)
+            # YOLO-only for now. For future models, add dedicated branches here.
+            return self._preprocess_yolo(image)
 
         except Exception as e:
             logger.error(f"Error preprocessing image for {model_name}: {e}")
@@ -141,47 +132,7 @@ class ImageProcessor:
         logger.debug(f"YOLO preprocessing: {image.shape} -> {padded.shape}")
         return padded
 
-    def _preprocess_faster_rcnn(self, image: np.ndarray) -> np.ndarray:
-        """Preprocess image for Faster R-CNN model"""
-        # Faster R-CNN typically accepts variable sizes, but normalize
-
-        # Convert BGR to RGB
-        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Normalize to [0, 1]
-        normalized = rgb_image.astype(np.float32) / 255.0
-
-        # Standard ImageNet normalization
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
-
-        normalized = (normalized - mean) / std
-
-        logger.debug(f"Faster R-CNN preprocessing: {image.shape} -> {normalized.shape}")
-        return normalized
-
-    def _preprocess_vgg16(self, image: np.ndarray) -> np.ndarray:
-        """Preprocess image for VGG16 model"""
-        # VGG16 typically uses 224x224 input
-        target_size = (224, 224)
-
-        # Resize image
-        resized = cv2.resize(image, target_size, interpolation=cv2.INTER_LINEAR)
-
-        # Convert BGR to RGB
-        rgb_image = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-
-        # Normalize to [0, 1]
-        normalized = rgb_image.astype(np.float32) / 255.0
-
-        # VGG16 ImageNet normalization
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
-
-        normalized = (normalized - mean) / std
-
-        logger.debug(f"VGG16 preprocessing: {image.shape} -> {normalized.shape}")
-        return normalized
+    # Note: Additional preprocessors for future models can be added here
 
     def _preprocess_default(self, image: np.ndarray) -> np.ndarray:
         """Default preprocessing - basic normalization"""

@@ -482,3 +482,6 @@ training_model_manual/pool_data_set/data_set_1
 !Dockerfile
 !docker-compose.yml
 node_modules
+
+
+app/backend/outputs/detections/

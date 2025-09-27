@@ -444,11 +444,10 @@ Backend รันในโหมด Mock Data ที่:
 backend/
 ├── app_mock.py              # Main Flask application (Mock version)
 ├── app.py                   # Production Flask app (with real ML models)
-├── requirements-simple.txt  # Lightweight dependencies for mock
 ├── requirements.txt         # Full dependencies with ML libraries
 ├── models/
 │   ├── __init__.py
-│   └── model_loader.py     # Mock ML models loader
+│   └── real_model_loader.py # Real YOLO model loader/inference
 ├── utils/
 │   ├── __init__.py
 │   ├── image_processing.py # Image preprocessing utilities

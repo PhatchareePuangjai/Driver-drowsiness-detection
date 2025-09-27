@@ -8,21 +8,32 @@ import numpy as np
 from PIL import Image
 import logging
 from datetime import datetime
+import os
+import cv2
 
-# Import real model components
-try:
-    from models.real_model_loader import real_model_loader as RealModelLoader
-
-    USE_REAL_MODELS = True
-    print("✅ Using real ML models")
-except ImportError as e:
-    from models.model_loader import ModelLoader
-
-    USE_REAL_MODELS = False
-    print(f"⚠️ Using mock models (real models not available): {e}")
+# Import real model components (YOLO only)
+from models.real_model_loader import real_model_loader as model_loader
+print("✅ Using real YOLO model")
 
 from utils.response_formatter import ResponseFormatter
 from utils.image_processing import ImageProcessor
+
+# Helper functions for class name handling
+import re
+
+
+def _normalize_class_name(name: str) -> str:
+    s = str(name or "").strip()
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", s)
+    s = s.replace("_", "-").replace(" ", "-")
+    return s.lower()
+
+
+def _humanize_class_name(name: str) -> str:
+    # Convert CamelCase to spaced words then title-case
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name or "").strip())
+    s = s.replace("-", " ").replace("_", " ")
+    return s.lower()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -46,25 +57,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize components
-if USE_REAL_MODELS:
-    model_loader = RealModelLoader  # It's already initialized as a singleton
-    print("🚀 Real model loader initialized")
-else:
-    model_loader = ModelLoader()
-    print("🎭 Mock model loader initialized")
+print("🚀 Real model loader initialized")
 
 response_formatter = ResponseFormatter()
 image_processor = ImageProcessor()
 
-# Load models on startup
+# Models are loaded by the real_model_loader singleton on import
 try:
-    if USE_REAL_MODELS:
-        print("✅ Real models loaded from singleton instance")
-    else:
-        model_loader.load_all_models()
-        print("✅ All mock models loaded successfully")
+    print("✅ Real models loaded from singleton instance")
 except Exception as e:
-    print(f"❌ Error loading models: {e}")
+    print(f"❌ Error loading real models: {e}")
 
 
 @app.route("/api/health", methods=["GET"])
@@ -72,17 +74,14 @@ def health_check():
     """
     Health check endpoint
     """
-    if USE_REAL_MODELS:
-        models_loaded = list(model_loader.models.keys())
-    else:
-        models_loaded = model_loader.get_loaded_models()
+    models_loaded = list(model_loader.models.keys())
     return jsonify(
         response_formatter.format_health_response(
             status="healthy",
             models_loaded=models_loaded,
             additional_info={
                 "server": "Flask Development Server",
-                "mode": "mock_data",
+                "mode": "real",
                 "version": "1.0.0",
             },
         )
@@ -93,19 +92,14 @@ def health_check():
 def get_available_models():
     """Get list of available models with class information"""
     try:
-        if USE_REAL_MODELS:
-            models = model_loader.get_all_models()
-        else:
-            models = model_loader.get_loaded_models()
+        models = model_loader.get_all_models()
 
         # Add class information for each model
-        models_with_classes = {}
+        models_with_classes = []
         for model_name in models:
-            if USE_REAL_MODELS:
-                model_info = model_loader.get_model_info(model_name)
-            else:
-                model_info = model_loader.get_model_info(model_name)
-            models_with_classes[model_name] = model_info
+            model_info = model_loader.get_model_info(model_name)
+            if model_info:
+                models_with_classes.append(model_info)
 
         return jsonify(response_formatter.format_models_response(models_with_classes))
     except Exception as e:
@@ -120,14 +114,14 @@ def detect_drowsiness():
     JSON format:
     {
         "image": "base64_encoded_image",
-        "model": "yolo|faster_rcnn|vgg16" (optional, default: yolo),
+        "model": "yolo" (optional, default: yolo),
         "sessionId": "optional_session_id",
         "confidence_threshold": 0.5 (optional)
     }
 
     Form-data format (from Postman):
     - image: file upload
-    - model: yolo|faster_rcnn|vgg16 (optional, default: yolo)
+    - model: yolo (optional, default: yolo)
     - sessionId: optional_session_id (optional)
     - confidence_threshold: 0.5 (optional)
     """
@@ -234,7 +228,7 @@ def detect_drowsiness():
                 )
 
         # Validate model name
-        available_models = ["yolo", "faster_rcnn", "vgg16"]
+        available_models = ["yolo"]
         if model_name not in available_models:
             return (
                 jsonify(
@@ -276,23 +270,73 @@ def detect_drowsiness():
             result["inference_time_seconds"] = round(inference_time, 3)
             result["confidence_threshold"] = confidence_threshold
 
-            # Create alert level based on class
+            # Create alert level based on normalized class name
+            cls_norm = _normalize_class_name(result["class_name"])
+            cls_human = _humanize_class_name(result["class_name"])
+
             if result["is_drowsy"]:
-                if result["class_name"] in ["sleepy-driving", "yawning"]:
+                if cls_norm in ["sleepy-driving", "yawning", "sleepy", "yawn"]:
                     alert_level = "high"
-                    alert_message = f"Driver is {result['class_name'].replace('-', ' ')}! Immediate attention required."
-                elif result["class_name"] in ["dangerous-driving", "drinking"]:
+                    alert_message = f"Driver is {cls_human}! Immediate attention required."
+                elif cls_norm in ["dangerous-driving", "drinking"]:
                     alert_level = "critical"
-                    alert_message = f"Critical: {result['class_name'].replace('-', ' ')} detected! Pull over immediately."
+                    alert_message = f"Critical: {cls_human} detected! Pull over immediately."
                 else:
                     alert_level = "medium"
-                    alert_message = f"Warning: {result['class_name'].replace('-', ' ')} detected. Stay alert."
+                    alert_message = f"Warning: {cls_human} detected. Stay alert."
             else:
                 alert_level = "none"
-                alert_message = f"Driver appears {result['class_name'].replace('-', ' ')}. Continue monitoring."
+                alert_message = f"Driver appears {cls_human}. Continue monitoring."
 
             result["alert_level"] = alert_level
             result["alert_message"] = alert_message
+
+            # Save annotated image to outputs/detections
+            try:
+                detections_dir = os.getenv("DETECTIONS_DIR", os.path.join("outputs", "detections"))
+                os.makedirs(detections_dir, exist_ok=True)
+
+                filename = f"{model_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                save_path = os.path.join(detections_dir, filename)
+
+                if model_name == "yolo":
+                    yolo_model = model_loader.get_model("yolo")
+                    img_array = np.array(pil_image)
+                    yolo_results = yolo_model.model(img_array, verbose=False)
+                    if yolo_results and len(yolo_results) > 0:
+                        annotated = yolo_results[0].plot()  # BGR image
+                        ok = cv2.imwrite(save_path, annotated)
+                        if ok:
+                            result["saved_image_path"] = save_path
+                            logger.info(f"Saved annotated image to {save_path}")
+                    else:
+                        # Fallback: draw bbox if available
+                        if result.get("bbox"):
+                            x = int(result["bbox"].get("x", 0))
+                            y = int(result["bbox"].get("y", 0))
+                            w = int(result["bbox"].get("width", 0))
+                            h = int(result["bbox"].get("height", 0))
+                            img_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                            cv2.rectangle(img_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                            ok = cv2.imwrite(save_path, img_bgr)
+                            if ok:
+                                result["saved_image_path"] = save_path
+                                logger.info(f"Saved bbox image to {save_path}")
+                else:
+                    # Future models: simple bbox draw if bbox exists
+                    if result.get("bbox"):
+                        x = int(result["bbox"].get("x", 0))
+                        y = int(result["bbox"].get("y", 0))
+                        w = int(result["bbox"].get("width", 0))
+                        h = int(result["bbox"].get("height", 0))
+                        img_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                        cv2.rectangle(img_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                        ok = cv2.imwrite(save_path, img_bgr)
+                        if ok:
+                            result["saved_image_path"] = save_path
+                            logger.info(f"Saved bbox image to {save_path}")
+            except Exception as save_err:
+                logger.warning(f"Failed to save annotated image: {save_err}")
 
             logger.info(
                 f"Detection completed: {result.get('class_name', 'unknown')} (confidence: {result.get('confidence', 0):.2f})"
@@ -327,8 +371,9 @@ def detect_batch():
     Expected JSON:
     {
         "images": ["base64_1", "base64_2", ...],
-        "model": "yolo|faster_rcnn|vgg16" (optional),
-        "sessionId": "optional_session_id"
+        "model": "yolo" (optional),
+        "sessionId": "optional_session_id",
+        "save": true  // optional, default true; save annotated images
     }
     """
     try:
@@ -336,31 +381,30 @@ def detect_batch():
 
         if not data or "images" not in data:
             return (
-                jsonify(response_formatter._error_response("No images data provided")),
+                jsonify(response_formatter.format_error_response("No images data provided")),
                 400,
             )
 
         images_data = data["images"]
         model_name = data.get("model", "yolo")
         session_id = data.get("sessionId")
+        save_images = bool(data.get("save", True))
 
         if len(images_data) > 10:  # Limit batch size
             return (
                 jsonify(
-                    response_formatter._error_response(
+                    response_formatter.format_error_response(
                         "Batch size too large (max 10 images)"
                     )
                 ),
                 400,
             )
 
-        # Get model
-        model = model_loader.get_model(model_name)
-
-        if model is None:
+        # Validate model
+        if model_loader.get_model(model_name) is None:
             return (
                 jsonify(
-                    response_formatter._error_response(
+                    response_formatter.format_error_response(
                         f"Model {model_name} not available"
                     )
                 ),
@@ -380,30 +424,35 @@ def detect_batch():
                 decoded_data = base64.b64decode(image_data)
                 pil_image = Image.open(io.BytesIO(decoded_data))
 
-                # Run inference
-                if model_name == "yolo":
-                    is_drowsy, confidence, bbox = model.detect_drowsiness(pil_image)
-                elif model_name == "faster_rcnn":
-                    is_drowsy, confidence, bbox = model.predict(pil_image)
-                elif model_name == "vgg16":
-                    is_drowsy, confidence = model.classify(pil_image)
-                    bbox = None
+                # Run inference via unified loader
+                detection = model_loader.detect_drowsiness(pil_image, model_name)
+                detection["sessionId"] = session_id
 
+                # Optionally save annotated image (YOLO)
+                if save_images and model_name == "yolo":
+                    try:
+                        detections_dir = os.getenv("DETECTIONS_DIR", os.path.join("outputs", "detections"))
+                        os.makedirs(detections_dir, exist_ok=True)
+                        filename = f"{model_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}_{i}.jpg"
+                        save_path = os.path.join(detections_dir, filename)
+
+                        yolo_model = model_loader.get_model("yolo")
+                        img_array = np.array(pil_image)
+                        yolo_results = yolo_model.model(img_array, verbose=False)
+                        if yolo_results and len(yolo_results) > 0:
+                            annotated = yolo_results[0].plot()
+                            if cv2.imwrite(save_path, annotated):
+                                detection["saved_image_path"] = save_path
+                    except Exception as save_err:
+                        logger.warning(f"Failed to save annotated batch image {i}: {save_err}")
                 # Format individual result
-                result = response_formatter.format_detection_response(
-                    is_drowsy=is_drowsy,
-                    confidence=confidence,
-                    bbox=bbox,
-                    model_used=model_name,
-                    inference_time=0,  # Will calculate total time below
-                    session_id=session_id,
-                )
+                result = response_formatter.format_detection_response(detection)
                 result["index"] = i
                 results.append(result)
 
             except Exception as e:
                 logger.error(f"Error processing image {i}: {e}")
-                error_result = response_formatter._error_response(
+                error_result = response_formatter.format_error_response(
                     f"Error processing image {i}: {str(e)}"
                 )
                 error_result["index"] = i
@@ -427,7 +476,7 @@ def detect_batch():
 
     except Exception as e:
         logger.error(f"Error in batch detection: {e}")
-        return jsonify(response_formatter._error_response("Internal server error")), 500
+        return jsonify(response_formatter.format_error_response("Internal server error")), 500
 
 
 # Session management endpoints (future implementation)
@@ -457,7 +506,7 @@ def start_session():
     except Exception as e:
         logger.error(f"Error starting session: {e}")
         return (
-            jsonify(response_formatter._error_response("Failed to start session")),
+            jsonify(response_formatter.format_error_response("Failed to start session")),
             500,
         )
 
@@ -471,7 +520,7 @@ def end_session():
 
         if not session_id:
             return (
-                jsonify(response_formatter._error_response("Session ID required")),
+                jsonify(response_formatter.format_error_response("Session ID required")),
                 400,
             )
 
@@ -495,7 +544,7 @@ def end_session():
 
     except Exception as e:
         logger.error(f"Error ending session: {e}")
-        return jsonify(response_formatter._error_response("Failed to end session")), 500
+        return jsonify(response_formatter.format_error_response("Failed to end session")), 500
 
 
 @app.route("/api/session/history", methods=["GET"])
@@ -517,7 +566,7 @@ def get_session_history():
                 "drowsyFrames": 5 + i * 2,
                 "alertsTriggered": i,
                 "averageConfidence": 0.75 + (i * 0.05),
-                "modelUsed": ["yolo", "faster_rcnn", "vgg16"][i % 3],
+            "modelUsed": "yolo",
                 "isActive": False,
             }
             for i in range(5)
@@ -537,7 +586,7 @@ def get_session_history():
         logger.error(f"Error getting session history: {e}")
         return (
             jsonify(
-                response_formatter._error_response("Failed to get session history")
+                response_formatter.format_error_response("Failed to get session history")
             ),
             500,
         )
@@ -546,7 +595,7 @@ def get_session_history():
 @app.errorhandler(404)
 def not_found(error):
     return (
-        jsonify(response_formatter._error_response("Endpoint not found", "NOT_FOUND")),
+        jsonify(response_formatter.format_error_response("Endpoint not found", "NOT_FOUND")),
         404,
     )
 
@@ -555,7 +604,7 @@ def not_found(error):
 def internal_error(error):
     return (
         jsonify(
-            response_formatter._error_response(
+            response_formatter.format_error_response(
                 "Internal server error", "INTERNAL_ERROR"
             )
         ),
@@ -571,16 +620,11 @@ if __name__ == "__main__":
     PORT = int(os.getenv("API_PORT", 8000))
     DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-    logger.info(
-        f"🚀 Starting Drowsiness Detection API ({'Real' if USE_REAL_MODELS else 'Mock'} Mode)"
-    )
+    logger.info("🚀 Starting Drowsiness Detection API (Real YOLO Mode)")
     logger.info(f"📍 Server: http://{HOST}:{PORT}")
     logger.info(f"🔧 Debug mode: {DEBUG}")
 
-    if USE_REAL_MODELS:
-        logger.info(f"🤖 Models loaded: {len(model_loader.models)}")
-        logger.info(f"📋 Available models: {list(model_loader.models.keys())}")
-    else:
-        logger.info(f"🤖 Models loaded: {len(model_loader.get_loaded_models())}")
+    logger.info(f"🤖 Models loaded: {len(model_loader.models)}")
+    logger.info(f"📋 Available models: {list(model_loader.models.keys())}")
 
     app.run(host=HOST, port=PORT, debug=DEBUG)
