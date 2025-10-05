@@ -92,6 +92,18 @@ const Tab1: React.FC = () => {
     sessionStartTime: null as Date | null,
   });
 
+  // Alert tracking for consecutive detections
+  const [consecutiveAlerts, setConsecutiveAlerts] = useState({
+    drowsy: 0,
+    distracted: 0,
+    safetyViolation: 0,
+    lastStatus: null as DrowsinessStatus | null,
+  });
+
+  // Audio context for alert sounds
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const drowsyAlertIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Check if running on web platform
   const isWeb = Capacitor.getPlatform() === "web";
 
@@ -145,6 +157,176 @@ const Tab1: React.FC = () => {
     return status === "drowsy" || status === "safety-violation";
   };
 
+  // Initialize audio context
+  const initializeAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+    }
+    return audioContextRef.current;
+  };
+
+  // Stop drowsy alert sound
+  const stopDrowsyAlert = useCallback(() => {
+    if (drowsyAlertIntervalRef.current) {
+      clearInterval(drowsyAlertIntervalRef.current);
+      drowsyAlertIntervalRef.current = null;
+      console.log("🔇 Drowsy alert sound stopped");
+    }
+  }, []);
+
+  // Play single drowsy beep
+  const playSingleDrowsyBeep = useCallback(() => {
+    try {
+      const audioContext = initializeAudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Loud urgent beep pattern
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(400, audioContext.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
+      gainNode.gain.setValueAtTime(1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + 0.8
+      );
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.8);
+    } catch (error) {
+      console.error("Failed to play drowsy beep:", error);
+    }
+  }, []);
+
+  // Play alert sound
+  const playAlertSound = useCallback(
+    (type: "drowsy" | "warning") => {
+      try {
+        if (type === "drowsy") {
+          // 🚨 เมื่อ detect drowsy ติดต่อกัน 3 ครั้ง:
+          // 🔄 เสียงต่อเนื่อง: เล่นเสียงเตือนทุก 2 วินาที
+          // ⏰ ระยะเวลา: จนกว่าจะหยุด model หรือ detect เป็น safe
+          // 🔊 รูปแบบเสียง: 800Hz → 400Hz → 800Hz (0.8 วินาที/ครั้ง)
+          // 📢 ระดับเสียง: 1 (เสียงดังชัดเจน)
+
+          // 🔇 เงื่อนไขการหยุดเสียงเตือน:
+          // 😊 เมื่อ detect เป็น "safe" → หยุดเสียงทันที
+          // 🛑 เมื่อกด "Stop" capture → หยุดเสียงทันที
+          // 🔄 เมื่อ component unmount → หยุดเสียงทันที
+
+          // Stop any existing drowsy alert
+          stopDrowsyAlert();
+
+          // Start continuous drowsy alert - play beep every 2 seconds until stopped
+          console.log("🚨 Starting continuous drowsy alert...");
+          playSingleDrowsyBeep(); // Play immediately
+
+          drowsyAlertIntervalRef.current = setInterval(() => {
+            playSingleDrowsyBeep();
+          }, 2000); // Repeat every 2 seconds
+        } else {
+          // ⚠️ เสียงเตือน Distracted/Safety-violation (เหมือนเดิม):
+          // 🔉 เสียงเดียว: ไม่วนซ้ำ (0.5 วินาที)
+          // 🎵 รูปแบบ: 600Hz → 500Hz
+          // 📊 ระดับเสียง: 0.15 (เสียงนุ่ม)
+
+          // Softer warning sound for distraction/safety violation (single beep only)
+          const audioContext = initializeAudioContext();
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+
+          oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+          oscillator.frequency.setValueAtTime(
+            500,
+            audioContext.currentTime + 0.15
+          );
+          gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(
+            0.01,
+            audioContext.currentTime + 0.5
+          );
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.5);
+        }
+      } catch (error) {
+        console.error("Failed to play alert sound:", error);
+      }
+    },
+    [stopDrowsyAlert, playSingleDrowsyBeep]
+  );
+
+  // Update consecutive alerts and trigger sounds
+  const updateConsecutiveAlerts = useCallback(
+    (status: DrowsinessStatus) => {
+      setConsecutiveAlerts((prev) => {
+        const newState = { ...prev };
+
+        if (status === "safe") {
+          // Reset all counters when safe and stop drowsy alert
+          newState.drowsy = 0;
+          newState.distracted = 0;
+          newState.safetyViolation = 0;
+          stopDrowsyAlert(); // Stop continuous drowsy alert when safe
+        } else if (status === prev.lastStatus) {
+          // Increment counter for consecutive same status
+          switch (status) {
+            case "drowsy":
+              newState.drowsy = prev.drowsy + 1;
+              if (newState.drowsy === 3) {
+                playAlertSound("drowsy");
+                setAlertMessage(
+                  `🚨 CRITICAL: Drowsiness detected ${newState.drowsy} times in a row!`
+                );
+                setShowAlert(true);
+                // reset counter to avoid repeated alerts
+                newState.drowsy = 0;
+              }
+              break;
+            case "distracted":
+              newState.distracted = prev.distracted + 1;
+              if (newState.distracted === 3) {
+                playAlertSound("warning");
+                setAlertMessage(
+                  `⚠️ WARNING: Driver distracted ${newState.distracted} times in a row!`
+                );
+                setShowAlert(true);
+                // reset counter to avoid repeated alerts
+                newState.distracted = 0;
+              }
+              break;
+            case "safety-violation":
+              newState.safetyViolation = prev.safetyViolation + 1;
+              if (newState.safetyViolation === 3) {
+                playAlertSound("warning");
+                setAlertMessage(
+                  `⚠️ WARNING: Safety violations detected ${newState.safetyViolation} times in a row!`
+                );
+                setShowAlert(true);
+                // reset counter to avoid repeated alerts
+                newState.safetyViolation = 0;
+              }
+              break;
+          }
+        } else {
+          // Different status, reset all and start new count
+          newState.drowsy = status === "drowsy" ? 1 : 0;
+          newState.distracted = status === "distracted" ? 1 : 0;
+          newState.safetyViolation = status === "safety-violation" ? 1 : 0;
+        }
+
+        newState.lastStatus = status;
+        return newState;
+      });
+    },
+    [playAlertSound, stopDrowsyAlert]
+  );
+
   // Initialize live video preview for web
   const initializeLivePreview = useCallback(async () => {
     if (!isWeb || !cameraStatus.hasPermission) return;
@@ -186,8 +368,9 @@ const Tab1: React.FC = () => {
   useEffect(() => {
     return () => {
       stopLivePreview();
+      stopDrowsyAlert(); // Stop drowsy alert on cleanup
     };
-  }, [stopLivePreview]);
+  }, [stopLivePreview, stopDrowsyAlert]);
 
   // Initialize camera service and event listeners
   useEffect(() => {
@@ -241,17 +424,10 @@ const Tab1: React.FC = () => {
         return newStats;
       });
 
-      // Show alert if concerning status detected
-      if (shouldTriggerAlert(result.isDrowsy) && result.confidence > 0.7) {
-        const statusText = getStatusText(result.isDrowsy);
-        const statusIcon = getStatusIcon(result.isDrowsy);
-        setAlertMessage(
-          `${statusIcon} ${statusText} Detected! Confidence: ${(
-            result.confidence * 100
-          ).toFixed(1)}%`
-        );
-        setShowAlert(true);
-      }
+      // Update consecutive alerts tracking and trigger sounds if needed
+      updateConsecutiveAlerts(result.isDrowsy);
+
+      // Note: Alert popups will only show for consecutive detections (handled in updateConsecutiveAlerts)
     };
 
     const handleError = (error: any) => {
@@ -282,7 +458,7 @@ const Tab1: React.FC = () => {
       cameraService.removeListener("captureError", handleError);
       cameraService.removeListener("analysisError", handleError);
     };
-  }, []);
+  }, [updateConsecutiveAlerts]);
 
   // Initialize camera with proper permission handling
   const initializeCamera = useCallback(async () => {
@@ -341,9 +517,12 @@ const Tab1: React.FC = () => {
   // Stop continuous capture
   const stopCapture = useCallback(() => {
     cameraService.stopContinuousCapture();
+    // Stop any ongoing drowsy alert sound
+    stopDrowsyAlert();
     // Keep live preview running even after stopping capture
     // User can still see the camera feed
-  }, []);
+    console.log("🛑 Capture stopped, drowsy alerts cleared");
+  }, [stopDrowsyAlert]);
 
   // Take single photo for analysis
   const takeSinglePhoto = useCallback(async () => {
@@ -377,20 +556,8 @@ const Tab1: React.FC = () => {
         }
       }
 
-      if (
-        shouldTriggerAlert(result.isDrowsy) &&
-        result.confidence &&
-        result.confidence > 0.5
-      ) {
-        const statusText = getStatusText(result.isDrowsy);
-        const statusIcon = getStatusIcon(result.isDrowsy);
-        setAlertMessage(
-          `Single Detection: ${statusIcon} ${statusText} detected with ${(
-            result.confidence * 100
-          ).toFixed(1)}% confidence`
-        );
-        setShowAlert(true);
-      }
+      // Note: Single photo detection results are shown in the UI but no alert popup
+      // Alerts only appear for consecutive detections during continuous monitoring
       console.log("✅ Single photo analysis completed from Tab1");
     } catch (error) {
       console.error("❌ Failed to analyze photo:", error);
@@ -890,7 +1057,7 @@ const Tab1: React.FC = () => {
         <IonAlert
           isOpen={showAlert}
           onDidDismiss={() => setShowAlert(false)}
-          header="Detection Alert"
+          header="Driver Safety Alert"
           message={alertMessage}
           buttons={["OK"]}
         />
