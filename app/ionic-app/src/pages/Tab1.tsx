@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   IonContent,
@@ -39,7 +42,7 @@ import {
   CameraStatus,
   DetectionFrame,
 } from "../app/services/camera.service";
-import { DetectionResult } from "../app/models/api.model";
+import { DetectionResult, DrowsinessStatus } from "../app/models/api.model";
 import { Capacitor } from "@capacitor/core";
 import "./Tab1.css";
 
@@ -81,13 +84,66 @@ const Tab1: React.FC = () => {
   // Statistics
   const [sessionStats, setSessionStats] = useState({
     totalDetections: 0,
+    safeDetections: 0,
     drowsyDetections: 0,
+    distractedDetections: 0,
+    safetyViolationDetections: 0,
     alertsTriggered: 0,
     sessionStartTime: null as Date | null,
   });
 
   // Check if running on web platform
   const isWeb = Capacitor.getPlatform() === "web";
+
+  // Helper functions for drowsiness status
+  const getStatusIcon = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "😊";
+      case "drowsy":
+        return "😴";
+      case "distracted":
+        return "👁️";
+      case "safety-violation":
+        return "⚠️";
+      default:
+        return "❓";
+    }
+  };
+
+  const getStatusText = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "Safe";
+      case "drowsy":
+        return "Drowsy";
+      case "distracted":
+        return "Distracted";
+      case "safety-violation":
+        return "Safety Violation";
+      default:
+        return "Unknown";
+    }
+  };
+
+  const getStatusColor = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "success";
+      case "drowsy":
+        return "warning";
+      case "distracted":
+        return "warning";
+      case "safety-violation":
+        return "danger";
+      default:
+        return "medium";
+    }
+  };
+
+  const shouldTriggerAlert = (status: DrowsinessStatus) => {
+    return status === "drowsy" || status === "safety-violation";
+  };
 
   // Initialize live video preview for web
   const initializeLivePreview = useCallback(async () => {
@@ -157,19 +213,42 @@ const Tab1: React.FC = () => {
       }
 
       // Update statistics
-      setSessionStats((prev) => ({
-        ...prev,
-        totalDetections: prev.totalDetections + 1,
-        drowsyDetections: prev.drowsyDetections + (result.isDrowsy ? 1 : 0),
-        alertsTriggered: prev.alertsTriggered + (result.alertTriggered ? 1 : 0),
-      }));
+      setSessionStats((prev) => {
+        const newStats = {
+          ...prev,
+          totalDetections: prev.totalDetections + 1,
+          alertsTriggered:
+            prev.alertsTriggered + (result.alertTriggered ? 1 : 0),
+        };
 
-      // Show alert if drowsiness detected
-      if (result.isDrowsy && result.confidence > 0.7) {
+        // Update counts based on detection status
+        switch (result.isDrowsy) {
+          case "safe":
+            newStats.safeDetections = prev.safeDetections + 1;
+            break;
+          case "drowsy":
+            newStats.drowsyDetections = prev.drowsyDetections + 1;
+            break;
+          case "distracted":
+            newStats.distractedDetections = prev.distractedDetections + 1;
+            break;
+          case "safety-violation":
+            newStats.safetyViolationDetections =
+              prev.safetyViolationDetections + 1;
+            break;
+        }
+
+        return newStats;
+      });
+
+      // Show alert if concerning status detected
+      if (shouldTriggerAlert(result.isDrowsy) && result.confidence > 0.7) {
+        const statusText = getStatusText(result.isDrowsy);
+        const statusIcon = getStatusIcon(result.isDrowsy);
         setAlertMessage(
-          `Drowsiness Detected! Confidence: ${(result.confidence * 100).toFixed(
-            1
-          )}%`
+          `${statusIcon} ${statusText} Detected! Confidence: ${(
+            result.confidence * 100
+          ).toFixed(1)}%`
         );
         setShowAlert(true);
       }
@@ -298,9 +377,15 @@ const Tab1: React.FC = () => {
         }
       }
 
-      if (result.isDrowsy && result.confidence && result.confidence > 0.5) {
+      if (
+        shouldTriggerAlert(result.isDrowsy) &&
+        result.confidence &&
+        result.confidence > 0.5
+      ) {
+        const statusText = getStatusText(result.isDrowsy);
+        const statusIcon = getStatusIcon(result.isDrowsy);
         setAlertMessage(
-          `Single Detection: Drowsiness detected with ${(
+          `Single Detection: ${statusIcon} ${statusText} detected with ${(
             result.confidence * 100
           ).toFixed(1)}% confidence`
         );
@@ -316,8 +401,8 @@ const Tab1: React.FC = () => {
     }
   }, [selectedModel, isWeb]);
 
-  // Get status badge color
-  const getStatusColor = (status: CameraStatus) => {
+  // Get camera status badge color
+  const getCameraStatusColor = (status: CameraStatus) => {
     if (!status.isInitialized) return "medium";
     if (!status.hasPermission) return "danger";
     if (status.isCapturing) return "success";
@@ -368,7 +453,7 @@ const Tab1: React.FC = () => {
             <IonGrid>
               <IonRow>
                 <IonCol size="6">
-                  <IonBadge color={getStatusColor(cameraStatus)}>
+                  <IonBadge color={getCameraStatusColor(cameraStatus)}>
                     {cameraStatus.isCapturing
                       ? "CAPTURING"
                       : cameraStatus.isInitialized
@@ -604,8 +689,8 @@ const Tab1: React.FC = () => {
                     📷 This frame was analyzed by the AI model
                     {lastDetection && (
                       <span style={{ display: "block", marginTop: "0.25rem" }}>
-                        Result:{" "}
-                        {lastDetection.isDrowsy ? "😴 Drowsy" : "😊 Alert"}(
+                        Result: {getStatusIcon(lastDetection.isDrowsy)}{" "}
+                        {getStatusText(lastDetection.isDrowsy)} (
                         {(lastDetection.confidence * 100).toFixed(1)}%
                         confidence)
                       </span>
@@ -627,10 +712,11 @@ const Tab1: React.FC = () => {
               <IonCardTitle>
                 Last Detection
                 <IonBadge
-                  color={lastDetection.isDrowsy ? "danger" : "success"}
+                  color={getStatusColor(lastDetection.isDrowsy)}
                   style={{ marginLeft: "10px" }}
                 >
-                  {lastDetection.isDrowsy ? "DROWSY" : "ALERT"}
+                  {getStatusIcon(lastDetection.isDrowsy)}{" "}
+                  {getStatusText(lastDetection.isDrowsy).toUpperCase()}
                 </IonBadge>
               </IonCardTitle>
             </IonCardHeader>
@@ -711,16 +797,45 @@ const Tab1: React.FC = () => {
                 </IonRow>
                 <IonRow>
                   <IonCol size="6">
-                    <IonText color="danger">
+                    <IonText color="success">
                       <p>
-                        <strong>Drowsy:</strong> {sessionStats.drowsyDetections}
+                        <strong>😊 Safe:</strong> {sessionStats.safeDetections}
                       </p>
                     </IonText>
                   </IonCol>
                   <IonCol size="6">
                     <IonText color="warning">
                       <p>
-                        <strong>Alerts:</strong> {sessionStats.alertsTriggered}
+                        <strong>😴 Drowsy:</strong>{" "}
+                        {sessionStats.drowsyDetections}
+                      </p>
+                    </IonText>
+                  </IonCol>
+                </IonRow>
+                <IonRow>
+                  <IonCol size="6">
+                    <IonText color="warning">
+                      <p>
+                        <strong>👁️ Distracted:</strong>{" "}
+                        {sessionStats.distractedDetections}
+                      </p>
+                    </IonText>
+                  </IonCol>
+                  <IonCol size="6">
+                    <IonText color="danger">
+                      <p>
+                        <strong>⚠️ Violations:</strong>{" "}
+                        {sessionStats.safetyViolationDetections}
+                      </p>
+                    </IonText>
+                  </IonCol>
+                </IonRow>
+                <IonRow>
+                  <IonCol>
+                    <IonText color="medium">
+                      <p style={{ textAlign: "center" }}>
+                        <strong>🚨 Alerts Triggered:</strong>{" "}
+                        {sessionStats.alertsTriggered}
                       </p>
                     </IonText>
                   </IonCol>

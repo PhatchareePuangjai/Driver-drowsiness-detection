@@ -13,6 +13,7 @@ import cv2
 
 # Import real model components (YOLO only)
 from models.real_model_loader import real_model_loader as model_loader
+
 print("✅ Using real YOLO model")
 
 from utils.response_formatter import ResponseFormatter
@@ -34,6 +35,7 @@ def _humanize_class_name(name: str) -> str:
     s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name or "").strip())
     s = s.replace("-", " ").replace("_", " ")
     return s.lower()
+
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -259,7 +261,7 @@ def detect_drowsiness():
 
             # Apply confidence threshold
             if result.get("confidence", 0) < confidence_threshold:
-                result["is_drowsy"] = False
+                result["is_drowsy"] = "safe"
                 result["class_name"] = "normal-driving"
                 logger.info(
                     f"Result filtered by confidence threshold: {result.get('confidence', 0)} < {confidence_threshold}"
@@ -274,17 +276,29 @@ def detect_drowsiness():
             cls_norm = _normalize_class_name(result["class_name"])
             cls_human = _humanize_class_name(result["class_name"])
 
-            if result["is_drowsy"]:
+            # Check category from is_drowsy field (now returns 4-class string)
+            category = result["is_drowsy"]
+
+            if category == "drowsy":
                 if cls_norm in ["sleepy-driving", "yawning", "sleepy", "yawn"]:
                     alert_level = "high"
-                    alert_message = f"Driver is {cls_human}! Immediate attention required."
-                elif cls_norm in ["dangerous-driving", "drinking"]:
-                    alert_level = "critical"
-                    alert_message = f"Critical: {cls_human} detected! Pull over immediately."
+                    alert_message = (
+                        f"Driver is {cls_human}! Immediate attention required."
+                    )
                 else:
-                    alert_level = "medium"
-                    alert_message = f"Warning: {cls_human} detected. Stay alert."
-            else:
+                    alert_level = "high"
+                    alert_message = f"Drowsiness detected: {cls_human}! Immediate attention required."
+            elif category == "distracted":
+                alert_level = "medium"
+                alert_message = (
+                    f"Driver distracted: {cls_human} detected. Stay focused."
+                )
+            elif category == "safety-violation":
+                alert_level = "critical"
+                alert_message = (
+                    f"Safety violation: {cls_human} detected! Pull over immediately."
+                )
+            else:  # safe
                 alert_level = "none"
                 alert_message = f"Driver appears {cls_human}. Continue monitoring."
 
@@ -293,10 +307,14 @@ def detect_drowsiness():
 
             # Save annotated image to outputs/detections
             try:
-                detections_dir = os.getenv("DETECTIONS_DIR", os.path.join("outputs", "detections"))
+                detections_dir = os.getenv(
+                    "DETECTIONS_DIR", os.path.join("outputs", "detections")
+                )
                 os.makedirs(detections_dir, exist_ok=True)
 
-                filename = f"{model_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                filename = (
+                    f"{model_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                )
                 save_path = os.path.join(detections_dir, filename)
 
                 if model_name == "yolo":
@@ -316,8 +334,12 @@ def detect_drowsiness():
                             y = int(result["bbox"].get("y", 0))
                             w = int(result["bbox"].get("width", 0))
                             h = int(result["bbox"].get("height", 0))
-                            img_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-                            cv2.rectangle(img_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                            img_bgr = cv2.cvtColor(
+                                np.array(pil_image), cv2.COLOR_RGB2BGR
+                            )
+                            cv2.rectangle(
+                                img_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2
+                            )
                             ok = cv2.imwrite(save_path, img_bgr)
                             if ok:
                                 result["saved_image_path"] = save_path
@@ -381,7 +403,9 @@ def detect_batch():
 
         if not data or "images" not in data:
             return (
-                jsonify(response_formatter.format_error_response("No images data provided")),
+                jsonify(
+                    response_formatter.format_error_response("No images data provided")
+                ),
                 400,
             )
 
@@ -431,7 +455,9 @@ def detect_batch():
                 # Optionally save annotated image (YOLO)
                 if save_images and model_name == "yolo":
                     try:
-                        detections_dir = os.getenv("DETECTIONS_DIR", os.path.join("outputs", "detections"))
+                        detections_dir = os.getenv(
+                            "DETECTIONS_DIR", os.path.join("outputs", "detections")
+                        )
                         os.makedirs(detections_dir, exist_ok=True)
                         filename = f"{model_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}_{i}.jpg"
                         save_path = os.path.join(detections_dir, filename)
@@ -444,7 +470,9 @@ def detect_batch():
                             if cv2.imwrite(save_path, annotated):
                                 detection["saved_image_path"] = save_path
                     except Exception as save_err:
-                        logger.warning(f"Failed to save annotated batch image {i}: {save_err}")
+                        logger.warning(
+                            f"Failed to save annotated batch image {i}: {save_err}"
+                        )
                 # Format individual result
                 result = response_formatter.format_detection_response(detection)
                 result["index"] = i
@@ -476,7 +504,10 @@ def detect_batch():
 
     except Exception as e:
         logger.error(f"Error in batch detection: {e}")
-        return jsonify(response_formatter.format_error_response("Internal server error")), 500
+        return (
+            jsonify(response_formatter.format_error_response("Internal server error")),
+            500,
+        )
 
 
 # Session management endpoints (future implementation)
@@ -506,7 +537,9 @@ def start_session():
     except Exception as e:
         logger.error(f"Error starting session: {e}")
         return (
-            jsonify(response_formatter.format_error_response("Failed to start session")),
+            jsonify(
+                response_formatter.format_error_response("Failed to start session")
+            ),
             500,
         )
 
@@ -520,7 +553,9 @@ def end_session():
 
         if not session_id:
             return (
-                jsonify(response_formatter.format_error_response("Session ID required")),
+                jsonify(
+                    response_formatter.format_error_response("Session ID required")
+                ),
                 400,
             )
 
@@ -544,7 +579,10 @@ def end_session():
 
     except Exception as e:
         logger.error(f"Error ending session: {e}")
-        return jsonify(response_formatter.format_error_response("Failed to end session")), 500
+        return (
+            jsonify(response_formatter.format_error_response("Failed to end session")),
+            500,
+        )
 
 
 @app.route("/api/session/history", methods=["GET"])
@@ -566,7 +604,7 @@ def get_session_history():
                 "drowsyFrames": 5 + i * 2,
                 "alertsTriggered": i,
                 "averageConfidence": 0.75 + (i * 0.05),
-            "modelUsed": "yolo",
+                "modelUsed": "yolo",
                 "isActive": False,
             }
             for i in range(5)
@@ -586,7 +624,9 @@ def get_session_history():
         logger.error(f"Error getting session history: {e}")
         return (
             jsonify(
-                response_formatter.format_error_response("Failed to get session history")
+                response_formatter.format_error_response(
+                    "Failed to get session history"
+                )
             ),
             500,
         )
@@ -595,7 +635,9 @@ def get_session_history():
 @app.errorhandler(404)
 def not_found(error):
     return (
-        jsonify(response_formatter.format_error_response("Endpoint not found", "NOT_FOUND")),
+        jsonify(
+            response_formatter.format_error_response("Endpoint not found", "NOT_FOUND")
+        ),
         404,
     )
 

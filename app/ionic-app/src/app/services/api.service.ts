@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // API Service for Backend Communication (React/TypeScript)
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from "axios";
 
@@ -300,29 +303,60 @@ export class ApiService {
 
   private getMockDetectionResult(request: DetectionRequest): DetectionResult {
     // สุ่มผลลัพธ์เพื่อจำลองการทำงานจริง
-    const isDrowsy = Math.random() < 0.3; // 30% chance of drowsiness
-    const confidence = isDrowsy
-      ? 0.6 + Math.random() * 0.35 // 0.6-0.95 for drowsy
-      : 0.1 + Math.random() * 0.4; // 0.1-0.5 for alert
+    const statuses = [
+      "safe",
+      "drowsy",
+      "distracted",
+      "safety-violation",
+    ] as const;
+    const randomIndex = Math.floor(Math.random() * statuses.length);
+    const status = statuses[randomIndex];
+
+    // ปรับความมั่นใจตามสถานะ
+    let confidence: number;
+    let className: string;
+
+    switch (status) {
+      case "safe":
+        confidence = 0.7 + Math.random() * 0.3; // 0.7-1.0 for safe
+        className = "Alert/Focused";
+        break;
+      case "drowsy":
+        confidence = 0.6 + Math.random() * 0.35; // 0.6-0.95 for drowsy
+        className = "Drowsy/Sleepy";
+        break;
+      case "distracted":
+        confidence = 0.5 + Math.random() * 0.4; // 0.5-0.9 for distracted
+        className = "Distracted/Looking Away";
+        break;
+      case "safety-violation":
+        confidence = 0.8 + Math.random() * 0.2; // 0.8-1.0 for safety violation
+        className = "Safety Violation/Phone Use";
+        break;
+    }
 
     const mockResult: DetectionResult = {
       id: `mock_${Date.now()}`,
       timestamp: new Date().toISOString(),
-      isDrowsy,
+      isDrowsy: status,
       confidence: Math.round(confidence * 100) / 100,
       modelUsed: request.model || "yolo",
       inferenceTime: 0.5 + Math.random() * 2, // 0.5-2.5 seconds
-      bbox: isDrowsy
-        ? {
-            x: 100,
-            y: 100,
-            width: 200,
-            height: 200,
-          }
-        : undefined,
-      alertTriggered: isDrowsy && confidence > 0.7,
+      bbox:
+        status !== "safe"
+          ? {
+              x: 100 + Math.floor(Math.random() * 50),
+              y: 100 + Math.floor(Math.random() * 50),
+              width: 150 + Math.floor(Math.random() * 100),
+              height: 150 + Math.floor(Math.random() * 100),
+            }
+          : undefined,
+      alertTriggered:
+        (status === "drowsy" || status === "safety-violation") &&
+        confidence > 0.7,
       sessionId: request.sessionId,
       status: "success",
+      className,
     };
 
     // Simulate API delay
@@ -334,26 +368,57 @@ export class ApiService {
   private getMockBatchDetectionResult(
     request: BatchDetectionRequest
   ): BatchDetectionResponse {
+    const statuses = [
+      "safe",
+      "drowsy",
+      "distracted",
+      "safety-violation",
+    ] as const;
+
     const results = request.images.map((_, index) => {
-      const isDrowsy = Math.random() < 0.3;
-      const confidence = isDrowsy
-        ? 0.6 + Math.random() * 0.35
-        : 0.1 + Math.random() * 0.4;
+      const randomIndex = Math.floor(Math.random() * statuses.length);
+      const status = statuses[randomIndex];
+
+      let confidence: number;
+      let className: string;
+
+      switch (status) {
+        case "safe":
+          confidence = 0.7 + Math.random() * 0.3;
+          className = "Alert/Focused";
+          break;
+        case "drowsy":
+          confidence = 0.6 + Math.random() * 0.35;
+          className = "Drowsy/Sleepy";
+          break;
+        case "distracted":
+          confidence = 0.5 + Math.random() * 0.4;
+          className = "Distracted/Looking Away";
+          break;
+        case "safety-violation":
+          confidence = 0.8 + Math.random() * 0.2;
+          className = "Safety Violation/Phone Use";
+          break;
+      }
 
       return {
         index,
         id: `mock_batch_${Date.now()}_${index}`,
         timestamp: new Date().toISOString(),
-        isDrowsy,
+        isDrowsy: status,
         confidence: Math.round(confidence * 100) / 100,
         modelUsed: request.model || "yolo",
         inferenceTime: 0.3 + Math.random() * 1,
-        bbox: isDrowsy
-          ? { x: 100, y: 100, width: 200, height: 200 }
-          : undefined,
-        alertTriggered: isDrowsy && confidence > 0.7,
+        bbox:
+          status !== "safe"
+            ? { x: 100, y: 100, width: 200, height: 200 }
+            : undefined,
+        alertTriggered:
+          (status === "drowsy" || status === "safety-violation") &&
+          confidence > 0.7,
         sessionId: request.sessionId,
         status: "success" as const,
+        className,
       };
     });
 
@@ -391,27 +456,39 @@ export class ApiService {
   }
 
   private getMockSessionHistory(): SessionHistoryResponse {
-    const mockSessions = Array.from({ length: 5 }, (_, i) => ({
-      id: `session_${Date.now() - i * 86400000}`,
-      startTime: new Date(Date.now() - i * 86400000).toISOString(),
-      endTime: new Date(Date.now() - i * 86400000 + 3600000).toISOString(),
-      totalFrames: Math.floor(Math.random() * 1000) + 100,
-      drowsyFrames: Math.floor(Math.random() * 50),
-      alertsTriggered: Math.floor(Math.random() * 5),
-      averageConfidence: Math.round((0.3 + Math.random() * 0.6) * 100) / 100,
-      modelUsed: ["yolo", "faster_rcnn", "vgg16"][
-        Math.floor(Math.random() * 3)
-      ] as ModelType,
-      settings: {
-        model: "yolo" as ModelType,
-        confidenceThreshold: 0.5,
-        frameInterval: 500,
-        autoStart: true,
-        enablePreprocessing: true,
-      },
-      duration: 3600,
-      isActive: false,
-    }));
+    const mockSessions = Array.from({ length: 5 }, (_, i) => {
+      const totalFrames = Math.floor(Math.random() * 1000) + 100;
+      const drowsyFrames = Math.floor(Math.random() * 50);
+      const distractedFrames = Math.floor(Math.random() * 30);
+      const safetyViolationFrames = Math.floor(Math.random() * 10);
+      const safeFrames =
+        totalFrames - drowsyFrames - distractedFrames - safetyViolationFrames;
+
+      return {
+        id: `session_${Date.now() - i * 86400000}`,
+        startTime: new Date(Date.now() - i * 86400000).toISOString(),
+        endTime: new Date(Date.now() - i * 86400000 + 3600000).toISOString(),
+        totalFrames,
+        drowsyFrames,
+        distractedFrames,
+        safetyViolationFrames,
+        safeFrames: Math.max(0, safeFrames), // Ensure non-negative
+        alertsTriggered: Math.floor(Math.random() * 5),
+        averageConfidence: Math.round((0.3 + Math.random() * 0.6) * 100) / 100,
+        modelUsed: ["yolo", "faster_rcnn", "vgg16"][
+          Math.floor(Math.random() * 3)
+        ] as ModelType,
+        settings: {
+          model: "yolo" as ModelType,
+          confidenceThreshold: 0.5,
+          frameInterval: 500,
+          autoStart: true,
+          enablePreprocessing: true,
+        },
+        duration: 3600,
+        isActive: false,
+      };
+    });
 
     return {
       status: "success",

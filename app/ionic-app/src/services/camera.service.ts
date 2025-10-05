@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // Camera Service for Ionic React App
 import {
   Camera,
@@ -29,6 +30,8 @@ export interface CameraStatus {
   lastCaptureTime?: Date;
   captureCount: number;
   errorMessage?: string;
+  platform?: string;
+  permissionStatus?: string;
 }
 
 export interface DetectionFrame {
@@ -65,6 +68,8 @@ export class CameraService extends EventEmitter {
     isCapturing: false,
     hasPermission: false,
     captureCount: 0,
+    platform: "web", // Default platform
+    permissionStatus: "unknown", // Default permission status
   };
 
   private captureInterval?: NodeJS.Timeout;
@@ -124,8 +129,16 @@ export class CameraService extends EventEmitter {
       });
 
       if (permission.camera === "granted") {
-        this.updateStatus({ hasPermission: true, errorMessage: undefined });
+        this.updateStatus({
+          hasPermission: true,
+          errorMessage: undefined,
+          permissionStatus: "granted",
+        });
       } else {
+        this.updateStatus({
+          hasPermission: false,
+          permissionStatus: permission.camera || "denied",
+        });
         throw new Error("Camera permission denied");
       }
     } catch (error) {
@@ -133,6 +146,7 @@ export class CameraService extends EventEmitter {
       this.updateStatus({
         hasPermission: false,
         errorMessage: "Camera permission required for drowsiness detection",
+        permissionStatus: "denied",
       });
       throw error;
     }
@@ -379,15 +393,42 @@ export class CameraService extends EventEmitter {
    * Determine alert level based on detection result
    */
   private getAlertLevel(result: DetectionResult): number {
-    if (result.status !== "success" || !result.isDrowsy) {
-      return 0; // No alert if not drowsy or failed detection
+    if (result.status !== "success") {
+      return 0; // No alert if failed detection
     }
 
-    // Alert level based on confidence score
-    if (result.confidence >= 0.8) return 3; // High alert
-    if (result.confidence >= 0.6) return 2; // Medium alert
-    if (result.confidence >= 0.4) return 1; // Low alert
-    return 0; // No alert
+    // Determine alert level based on status and confidence
+    const shouldAlert =
+      result.isDrowsy === "drowsy" ||
+      result.isDrowsy === "distracted" ||
+      result.isDrowsy === "safety-violation";
+
+    if (!shouldAlert) {
+      return 0; // No alert for safe status
+    }
+
+    // Higher alert levels for more critical statuses
+    if (result.isDrowsy === "safety-violation") {
+      // Safety violations always get high alert regardless of confidence
+      return result.confidence >= 0.6 ? 3 : 2;
+    }
+
+    if (result.isDrowsy === "drowsy") {
+      // Drowsiness alerts based on confidence
+      if (result.confidence >= 0.8) return 3; // High alert
+      if (result.confidence >= 0.6) return 2; // Medium alert
+      if (result.confidence >= 0.4) return 1; // Low alert
+      return 0;
+    }
+
+    if (result.isDrowsy === "distracted") {
+      // Distraction alerts (generally lower priority than drowsy)
+      if (result.confidence >= 0.9) return 2; // Medium alert only for very high confidence
+      if (result.confidence >= 0.7) return 1; // Low alert
+      return 0;
+    }
+
+    return 0; // Default no alert
   }
 
   /**

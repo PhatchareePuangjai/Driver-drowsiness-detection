@@ -16,6 +16,15 @@ export type DetectionStatus =
   | "error";
 
 /**
+ * Drowsiness Status
+ */
+export type DrowsinessStatus =
+  | "safe"
+  | "drowsy"
+  | "distracted"
+  | "safety-violation";
+
+/**
  * Alert Sensitivity Levels
  */
 export type AlertSensitivity = "low" | "medium" | "high";
@@ -33,7 +42,7 @@ export interface BoundingBox {
 /**
  * Base API Response Structure
  */
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   status: "success" | "error";
   message?: string;
   timestamp?: string;
@@ -95,7 +104,7 @@ export interface BatchDetectionRequest {
 export interface DetectionResult {
   id?: string;
   timestamp: string;
-  isDrowsy: boolean;
+  isDrowsy: DrowsinessStatus;
   confidence: number;
   modelUsed: ModelType;
   inferenceTime: number;
@@ -104,6 +113,7 @@ export interface DetectionResult {
   sessionId?: string;
   status: "success" | "error";
   message?: string;
+  className?: string;
 }
 
 /**
@@ -184,6 +194,9 @@ export interface DetectionSession {
   endTime?: string;
   totalFrames: number;
   drowsyFrames: number;
+  distractedFrames: number;
+  safetyViolationFrames: number;
+  safeFrames: number;
   alertsTriggered: number;
   averageConfidence: number;
   modelUsed: ModelType;
@@ -209,7 +222,7 @@ export interface ApiError {
   status: "error";
   message: string;
   code?: number;
-  details?: any;
+  details?: unknown;
   timestamp: string;
 }
 
@@ -237,17 +250,29 @@ export interface PerformanceMetrics {
 }
 
 /**
+ * Detection Count by Status
+ */
+export interface DetectionCounts {
+  safe: number;
+  drowsy: number;
+  distracted: number;
+  safetyViolation: number;
+}
+
+/**
  * Statistics Data
  */
 export interface StatisticsData {
   totalSessions: number;
   totalDetections: number;
+  detectionCounts: DetectionCounts;
   averageSessionDuration: number;
   mostUsedModel: ModelType;
   alertsTriggered: number;
-  weeklyTrend: number[];
-  monthlyTrend: number[];
+  weeklyTrend: DetectionCounts[];
+  monthlyTrend: DetectionCounts[];
   peakDrowsinessHours: number[];
+  mostCommonIssue: DrowsinessStatus;
 }
 
 /**

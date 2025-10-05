@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback } from "react";
 import {
   IonContent,
@@ -16,7 +17,6 @@ import {
   IonAlert,
   IonItem,
   IonLabel,
-  IonToggle,
   IonRange,
   IonSelect,
   IonSelectOption,
@@ -30,15 +30,8 @@ import {
   stopCircleOutline,
   settingsOutline,
   eyeOutline,
-  warningOutline,
-  checkmarkCircleOutline,
-  alertCircleOutline,
 } from "ionicons/icons";
-import {
-  cameraService,
-  CameraStatus,
-  DetectionFrame,
-} from "../app/services/camera.service";
+import { cameraService, CameraStatus } from "../app/services/camera.service";
 import { DetectionResult } from "../app/models/api.model";
 import "./CameraPage.css";
 
@@ -49,6 +42,8 @@ const CameraPage: React.FC = () => {
     isCapturing: false,
     hasPermission: false,
     captureCount: 0,
+    platform: "web",
+    permissionStatus: "unknown",
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -80,6 +75,7 @@ const CameraPage: React.FC = () => {
     };
 
     const handleDetectionResult = (data: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { frame, result, alertLevel: level } = data;
       setLastDetection(result);
       setAlertLevel(level);
@@ -103,8 +99,8 @@ const CameraPage: React.FC = () => {
       }
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleError = (error: any) => {
-      console.error("Camera service error:", error);
       setAlertMessage("Camera error: " + error.message);
       setShowAlert(true);
     };

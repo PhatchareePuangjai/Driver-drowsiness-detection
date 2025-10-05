@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useRef, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -10,6 +11,7 @@ import {
   IonText,
   IonAlert,
 } from "@ionic/react";
+import { DrowsinessStatus, DetectionResult } from "../app/models/api.model";
 
 const CameraTest: React.FC = () => {
   const [photoSrc, setPhotoSrc] = useState<string | null>(null);
@@ -18,16 +20,102 @@ const CameraTest: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<string>("unknown");
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  const [detectionResult, setDetectionResult] = useState<any>(null); // Store detection result
+  const [detectionResult, setDetectionResult] =
+    useState<DetectionResult | null>(null); // Store detection result
+  const [isDragOver, setIsDragOver] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isWeb = Capacitor.getPlatform() === "web";
+
+  // Helper functions for status styling
+  const getStatusColor = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "success";
+      case "drowsy":
+        return "warning";
+      case "distracted":
+        return "warning";
+      case "safety-violation":
+        return "danger";
+      default:
+        return "medium";
+    }
+  };
+
+  const getStatusBackgroundColor = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "#e8f5e8";
+      case "drowsy":
+        return "#fff3cd";
+      case "distracted":
+        return "#fff3cd";
+      case "safety-violation":
+        return "#ffeaea";
+      default:
+        return "#f8f9fa";
+    }
+  };
+
+  const getStatusBorder = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "2px solid #28a745";
+      case "drowsy":
+        return "2px solid #ffc107";
+      case "distracted":
+        return "2px solid #fd7e14";
+      case "safety-violation":
+        return "2px solid #ef4444";
+      default:
+        return "1px solid #ccc";
+    }
+  };
+
+  const getStatusTextColor = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "#155724";
+      case "drowsy":
+        return "#856404";
+      case "distracted":
+        return "#c65d00";
+      case "safety-violation":
+        return "#dc2626";
+      default:
+        return "inherit";
+    }
+  };
+
+  const getStatusHeader = (status: DrowsinessStatus) => {
+    switch (status) {
+      case "safe":
+        return "✅ SAFE DETECTED:";
+      case "drowsy":
+        return "😴 DROWSY DETECTED:";
+      case "distracted":
+        return "👁️ DISTRACTED DETECTED:";
+      case "safety-violation":
+        return "⚠️ SAFETY VIOLATION:";
+      default:
+        return "🎯 Result:";
+    }
+  };
+
+  const getStatusFontWeight = (status: DrowsinessStatus) => {
+    return status === "drowsy" || status === "safety-violation"
+      ? "bold"
+      : "normal";
+  };
 
   const addDebugInfo = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const debugMessage = `[${timestamp}] ${message}`;
+    // eslint-disable-next-line no-console
     console.log(debugMessage);
     setDebugInfo((prev) => [...prev.slice(-4), debugMessage]); // Keep last 5 messages
   };
@@ -221,6 +309,177 @@ const CameraTest: React.FC = () => {
     }
   };
 
+  // Handle file upload for web
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Clear previous results
+    setDetectionResult(null);
+    setError(null);
+
+    try {
+      setIsLoading(true);
+      addDebugInfo(`📁 Processing uploaded file: ${file.name}`);
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        throw new Error("Please select an image file (JPG, PNG, etc.)");
+      }
+
+      // Check file size (limit to 10MB)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        throw new Error(
+          "File size too large. Please select an image under 10MB."
+        );
+      }
+
+      // Convert file to base64
+      const base64 = await convertFileToBase64(file);
+      const dataUrl = `data:${file.type};base64,${base64}`;
+
+      setPhotoSrc(dataUrl);
+      addDebugInfo(`✅ File uploaded! Size: ${Math.round(file.size / 1024)}KB`);
+
+      // Send to backend for analysis
+      await testBackendConnection(base64);
+    } catch (err: any) {
+      addDebugInfo(`❌ File upload error: ${err.message}`);
+      setError(`Upload error: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  // Convert file to base64
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data:image/xxx;base64, prefix
+        const base64 = result.split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Upload from gallery (mobile)
+  const uploadFromGallery = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setDetectionResult(null);
+      addDebugInfo("📱 Opening gallery...");
+
+      // Dynamic import to avoid web bundle issues
+      const { Camera, CameraResultType, CameraSource } = await import(
+        "@capacitor/camera"
+      );
+
+      const image = await Camera.getPhoto({
+        quality: 80,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Photos, // Gallery/Photos
+        width: 640,
+        height: 480,
+      });
+
+      if (image.dataUrl) {
+        setPhotoSrc(image.dataUrl);
+        addDebugInfo("✅ Image selected from gallery!");
+        await testBackendConnection(image.dataUrl.split(",")[1]);
+      }
+    } catch (err: any) {
+      addDebugInfo(`❌ Gallery selection error: ${err.message}`);
+      setError(`Gallery error: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Trigger file input click
+  const triggerFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Handle drag and drop for web
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find((file) => file.type.startsWith("image/"));
+
+    if (imageFile) {
+      addDebugInfo(`📁 File dropped: ${imageFile.name}`);
+      // Process the dropped file directly
+      try {
+        setIsLoading(true);
+        setDetectionResult(null);
+        setError(null);
+
+        // Validate file type and size
+        if (!imageFile.type.startsWith("image/")) {
+          throw new Error("Please drop an image file (JPG, PNG, etc.)");
+        }
+
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (imageFile.size > maxSize) {
+          throw new Error(
+            "File size too large. Please select an image under 10MB."
+          );
+        }
+
+        // Convert file to base64
+        const base64 = await convertFileToBase64(imageFile);
+        const dataUrl = `data:${imageFile.type};base64,${base64}`;
+
+        setPhotoSrc(dataUrl);
+        addDebugInfo(
+          `✅ File dropped and processed! Size: ${Math.round(
+            imageFile.size / 1024
+          )}KB`
+        );
+
+        // Send to backend for analysis
+        await testBackendConnection(base64);
+      } catch (err: any) {
+        addDebugInfo(`❌ Drop processing error: ${err.message}`);
+        setError(`Drop error: ${err.message}`);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      setError("Please drop an image file (JPG, PNG, etc.)");
+    }
+  };
+
   const requestPermissions = async () => {
     // Clear previous results
     setDetectionResult(null);
@@ -279,11 +538,24 @@ const CameraTest: React.FC = () => {
         // Store the detection result
         setDetectionResult(result);
 
-        const alertMsg = `Detection Result:\n${
-          result.isDrowsy ? "😴 DROWSY" : "😊 ALERT"
-        }\nConfidence: ${(result.confidence * 100).toFixed(1)}%\nModel: ${
-          result.modelUsed || "Mock"
-        }\nClass: ${result.className || "N/A"}`;
+        // Map status to display message and color
+        const statusMessages: { [key: string]: string } = {
+          safe: "✅ Safe - Driver is alert",
+          drowsy: "😴 Drowsy - Driver showing signs of fatigue",
+          distracted: "👁️ Distracted - Driver not focused on road",
+          "safety-violation":
+            "⚠️ Safety Violation - Immediate attention required",
+        };
+
+        const statusMessage =
+          statusMessages[result.isDrowsy] ||
+          `Unknown status: ${result.isDrowsy}`;
+
+        const alertMsg = `Detection Result:\n${statusMessage}\nConfidence: ${(
+          result.confidence * 100
+        ).toFixed(1)}%\nModel: ${result.modelUsed || "Mock"}\nClass: ${
+          result.className || "N/A"
+        }`;
 
         setError(alertMsg);
         setShowAlert(true);
@@ -292,7 +564,9 @@ const CameraTest: React.FC = () => {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
     } catch (err: any) {
-      addDebugInfo(`❌ Backend error: ${err.message}`);
+      addDebugInfo(
+        `❌ Backend error: ${err instanceof Error ? err.message : String(err)}`
+      );
 
       // More specific error messages
       let errorMessage = err.message;
@@ -317,7 +591,44 @@ const CameraTest: React.FC = () => {
           🧪 Camera Test Component ({isWeb ? "Web Mode" : "Mobile Mode"})
         </IonCardTitle>
       </IonCardHeader>
-      <IonCardContent>
+      <IonCardContent
+        onDragOver={isWeb ? handleDragOver : undefined}
+        onDragLeave={isWeb ? handleDragLeave : undefined}
+        onDrop={isWeb ? handleDrop : undefined}
+        style={
+          isWeb && isDragOver
+            ? {
+                backgroundColor: "#f0f8ff",
+                border: "2px dashed var(--ion-color-primary)",
+                borderRadius: "8px",
+                transition: "all 0.3s ease",
+              }
+            : {}
+        }
+      >
+        {/* Drag and Drop Indicator */}
+        {isWeb && isDragOver && (
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 10,
+              backgroundColor: "rgba(255, 255, 255, 0.9)",
+              padding: "20px",
+              borderRadius: "8px",
+              border: "2px dashed var(--ion-color-primary)",
+              textAlign: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <IonText color="primary">
+              <h3>📁 Drop Image Here</h3>
+              <p>Release to upload and analyze</p>
+            </IonText>
+          </div>
+        )}
         {/* Debug Information */}
         {debugInfo.length > 0 && (
           <div
@@ -349,10 +660,10 @@ const CameraTest: React.FC = () => {
         {error && (
           <IonText
             color={
-              error.includes("Detection Result")
-                ? detectionResult?.isDrowsy
-                  ? "danger"
-                  : "success"
+              error.includes("Detection Result") && detectionResult?.isDrowsy
+                ? getStatusColor(detectionResult.isDrowsy)
+                : error.includes("Detection Result")
+                ? "medium"
                 : "danger"
             }
           >
@@ -360,17 +671,19 @@ const CameraTest: React.FC = () => {
               style={{
                 whiteSpace: "pre-line",
                 padding: "12px",
-                backgroundColor: error.includes("Detection Result")
-                  ? detectionResult?.isDrowsy
-                    ? "#ffeaea"
-                    : "#e8f5e8"
-                  : "#ffe6e6",
+                backgroundColor:
+                  error.includes("Detection Result") &&
+                  detectionResult?.isDrowsy
+                    ? getStatusBackgroundColor(detectionResult.isDrowsy)
+                    : error.includes("Detection Result")
+                    ? "#f8f9fa"
+                    : "#ffe6e6",
                 borderRadius: "8px",
                 margin: "12px 0",
                 border:
                   error.includes("Detection Result") &&
                   detectionResult?.isDrowsy
-                    ? "2px solid #ef4444"
+                    ? getStatusBorder(detectionResult.isDrowsy)
                     : "1px solid #ccc",
               }}
             >
@@ -379,14 +692,14 @@ const CameraTest: React.FC = () => {
                   color:
                     error.includes("Detection Result") &&
                     detectionResult?.isDrowsy
-                      ? "#dc2626"
+                      ? getStatusTextColor(detectionResult.isDrowsy)
                       : "inherit",
                 }}
               >
-                {error.includes("Detection Result")
-                  ? detectionResult?.isDrowsy
-                    ? "🚨 DROWSY DETECTED:"
-                    : "🎯 Result:"
+                {error.includes("Detection Result") && detectionResult?.isDrowsy
+                  ? getStatusHeader(detectionResult.isDrowsy)
+                  : error.includes("Detection Result")
+                  ? "🎯 Result:"
                   : "❌ Error:"}
               </strong>
               <br />
@@ -395,12 +708,12 @@ const CameraTest: React.FC = () => {
                   color:
                     error.includes("Detection Result") &&
                     detectionResult?.isDrowsy
-                      ? "#dc2626"
+                      ? getStatusTextColor(detectionResult.isDrowsy)
                       : "inherit",
                   fontWeight:
                     error.includes("Detection Result") &&
                     detectionResult?.isDrowsy
-                      ? "bold"
+                      ? getStatusFontWeight(detectionResult.isDrowsy)
                       : "normal",
                 }}
               >
@@ -441,15 +754,35 @@ const CameraTest: React.FC = () => {
                 ? "✅ Yes"
                 : "❌ No (camera requires HTTPS)"}
             </p>
+            <p
+              style={{
+                fontSize: "0.9em",
+                color: "var(--ion-color-medium)",
+                marginTop: "8px",
+              }}
+            >
+              💡 <strong>Options:</strong> You can either take a photo with
+              camera or upload an existing image file{" "}
+              {isWeb ? "(JPG, PNG, etc.)" : "from gallery"} for drowsiness
+              detection.
+            </p>
           </IonText>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", marginBottom: "1rem" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            marginBottom: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
           <IonButton
             expand="block"
             onClick={requestPermissions}
             color="secondary"
             disabled={isLoading}
+            style={{ flex: "1", minWidth: "200px" }}
           >
             {isWeb ? "🎥 REQUEST WEB CAMERA" : "📷 REQUEST MOBILE CAMERA"}
           </IonButton>
@@ -459,10 +792,75 @@ const CameraTest: React.FC = () => {
             onClick={takePicture}
             disabled={isLoading}
             color="primary"
+            style={{ flex: "1", minWidth: "200px" }}
           >
             {isLoading ? "⏳ PROCESSING..." : "📸 TAKE PHOTO & DETECT"}
           </IonButton>
         </div>
+
+        {/* Upload Options */}
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            marginBottom: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          {isWeb ? (
+            <IonButton
+              expand="block"
+              onClick={triggerFileInput}
+              disabled={isLoading}
+              color="tertiary"
+              style={{ flex: "1", minWidth: "200px" }}
+            >
+              📁 UPLOAD IMAGE FILE
+            </IonButton>
+          ) : (
+            <IonButton
+              expand="block"
+              onClick={uploadFromGallery}
+              disabled={isLoading}
+              color="tertiary"
+              style={{ flex: "1", minWidth: "200px" }}
+            >
+              🖼️ SELECT FROM GALLERY
+            </IonButton>
+          )}
+        </div>
+
+        {/* Drag and Drop Info for Web */}
+        {isWeb && (
+          <div
+            style={{
+              backgroundColor: "#f8f9fa",
+              padding: "12px",
+              borderRadius: "8px",
+              marginBottom: "16px",
+              border: "1px dashed #dee2e6",
+              textAlign: "center",
+            }}
+          >
+            <IonText color="medium">
+              <p style={{ margin: "0", fontSize: "0.9em" }}>
+                💡 <strong>Tip:</strong> You can also drag and drop an image
+                file anywhere on this card to upload and analyze it!
+              </p>
+            </IonText>
+          </div>
+        )}
+
+        {/* Hidden file input for web */}
+        {isWeb && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileUpload}
+            style={{ display: "none" }}
+          />
+        )}
 
         {/* Video preview for web (hidden but functional) */}
         {isWeb && (
@@ -504,7 +902,7 @@ const CameraTest: React.FC = () => {
           <div style={{ textAlign: "center", marginTop: "1rem" }}>
             <IonImg
               src={photoSrc}
-              alt="Captured photo"
+              alt="Image for analysis"
               style={{
                 maxWidth: "300px",
                 maxHeight: "200px",
@@ -514,9 +912,22 @@ const CameraTest: React.FC = () => {
             />
             <IonText color="medium">
               <p style={{ fontSize: "0.9em", marginTop: "0.5rem" }}>
-                📷 Photo captured and sent to backend for analysis
+                📷 Image processed and sent to backend for drowsiness analysis
               </p>
             </IonText>
+            <IonButton
+              size="small"
+              fill="clear"
+              color="medium"
+              onClick={() => {
+                setPhotoSrc(null);
+                setDetectionResult(null);
+                setError(null);
+              }}
+              style={{ marginTop: "0.5rem" }}
+            >
+              🗑️ Clear Image
+            </IonButton>
           </div>
         )}
 

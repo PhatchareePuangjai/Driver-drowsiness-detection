@@ -23,6 +23,7 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+
 # Helper utilities for class handling (name-based, model-agnostic)
 def _normalize_class_name(name: str) -> str:
     """Normalize label names across datasets.
@@ -40,26 +41,39 @@ def _normalize_class_name(name: str) -> str:
     return s.lower()
 
 
-def _is_drowsy_class_name(name: str) -> bool:
+def _is_drowsy_class_name(name: str) -> str:
     n = _normalize_class_name(name)
-    # Expandable list of labels considered drowsy/unsafe
-    drowsy_set = {
-        "dangerous-driving",
+
+    # Based on the class mapping from your model:
+    # "SafeDriving": "Safe",
+    # "Drowsy": "Drowsy",
+    # "PhoneUse": "Distracted",
+    # "Consuming": "Distracted",
+    # "Eating": "Distracted",
+    # "Drinking": "Distracted",
+    # "Smoking": "Distracted",
+    # "NoSeatbelt": "Safety Violation"
+    name = name.lower()
+    drowsy_keywords = ["drowsy", "sleepy", "tired"]
+    distracted_keywords = [
         "distracted",
-        "drinking",
-        "sleepy-driving",
-        "yawning",
-        # Common variants/synonyms
-        "sleepy",
-        "yawn",
         "phone",
-        "texting",
-        # CamelCase normalized variants map to same tokens via _normalize
-        "dangerousdriving",  # for labels without separators
-        "sleepydriving",
-        "safedriving-unsafe",  # placeholder variant if datasets differ
-    }
-    return n in drowsy_set
+        "consuming",
+        "eating",
+        "drinking",
+        "smoking",
+        "phoneuse",
+    ]
+    safety_violation_keywords = ["safety", "seatbelt", "no-seatbelt"]
+
+    if name in drowsy_keywords:
+        return "drowsy"
+    elif name in distracted_keywords:
+        return "distracted"
+    elif name in safety_violation_keywords:
+        return "safety-violation"
+    else:
+        return "safe"
 
 
 class RealFasterRCNNModel:
@@ -183,7 +197,7 @@ class RealFasterRCNNModel:
             confidence = float(best_score.item())
 
             # Determine if drowsy by name (unknown mapping → assume non-drowsy)
-            is_drowsy = _is_drowsy_class_name(class_name)
+            answer = _is_drowsy_class_name(class_name)
 
             # Convert bbox to format expected by API
             x1, y1, x2, y2 = best_box.tolist()
@@ -195,9 +209,9 @@ class RealFasterRCNNModel:
             }
 
             logger.info(
-                f"Prediction: {class_name} (confidence: {confidence:.3f}, drowsy: {is_drowsy})"
+                f"Prediction: {class_name} (confidence: {confidence:.3f}, drowsy: {answer})"
             )
-            return is_drowsy, confidence, bbox, class_name, class_id
+            return answer, confidence, bbox, class_name, class_id
 
         except Exception as e:
             logger.error(f"Error during inference: {e}")
@@ -269,13 +283,16 @@ class RealYOLOModel:
             # Process results
             if not results or len(results) == 0:
                 print("🤷‍♂️ No detections found")
-                return False, 0.0, None, "safe-driving", 4
+                return "safe", 0.0, None, "safe-driving", 4
 
-            result = results[0]
+            # หา result ที่มี boxes มากที่สุด (ถ้ามีหลาย result)
+            result = max(
+                results, key=lambda r: len(r.boxes) if r.boxes is not None else 0
+            )
 
             if result.boxes is None or len(result.boxes) == 0:
                 print("🤷‍♂️ No bounding boxes found")
-                return False, 0.0, None, "safe-driving", 4
+                return "safe", 0.0, None, "safe-driving", 4
 
             # Get the highest confidence detection
             boxes = result.boxes
@@ -288,11 +305,13 @@ class RealYOLOModel:
             best_conf = float(confidences[best_idx])
             best_class = int(classes[best_idx])
             best_box = xyxy[best_idx]
+
+            # Get class names mapping
             class_names = result.names
 
             class_name = class_names.get(best_class, "unknown")
             # Determine drowsiness by class name
-            is_drowsy = _is_drowsy_class_name(class_name)
+            answer = _is_drowsy_class_name(class_name)
 
             # Convert bbox format
             x1, y1, x2, y2 = best_box
@@ -304,9 +323,9 @@ class RealYOLOModel:
             }
 
             print(
-                f"🎯 YOLO Prediction: {class_name} (conf: {best_conf:.3f}, drowsy: {is_drowsy})"
+                f"🎯 YOLO Prediction: {class_name} (conf: {best_conf:.3f}, drowsy: {answer})"
             )
-            return is_drowsy, best_conf, bbox, class_name, best_class
+            return answer, best_conf, bbox, class_name, best_class
 
         except Exception as e:
             print(f"❌ Error during YOLO inference: {e}")
@@ -370,7 +389,7 @@ class RealModelLoader:
             print(f"❌ Error loading real models: {e}")
             # Don't raise - allow fallback to mock models
 
-    def get_model(self, model_name: str):
+    def get_model(self, model_name: str) -> Optional[Any]:
         """Get a specific model by name"""
         # Direct model mapping first
         if model_name in self.models:
@@ -406,9 +425,7 @@ class RealModelLoader:
         if not model:
             return None
 
-        model_type = (
-            "YOLOv8" if "yolo" in str(model.name).lower() else "Faster R-CNN"
-        )
+        model_type = "YOLOv8" if "yolo" in str(model.name).lower() else "Faster R-CNN"
         # Build class info dynamically when possible (YOLO has model.names)
         supported_classes: List[str] = []
         drowsy_names: List[str] = []
@@ -420,7 +437,7 @@ class RealModelLoader:
                 names_map = getattr(model.model, "names", {}) or {}
                 supported_classes = [str(v) for _, v in sorted(names_map.items())]
                 for n in supported_classes:
-                    if _is_drowsy_class_name(n):
+                    if _is_drowsy_class_name(n) == "drowsy":
                         drowsy_names.append(n)
                     else:
                         safe_names.append(n)
@@ -439,24 +456,20 @@ class RealModelLoader:
             "device": str(getattr(model, "device", "cpu")),
         }
 
-    def detect_drowsiness(
-        self, image, model_name: str = "yolo"
-    ) -> Dict[str, Any]:
+    def detect_drowsiness(self, image, model_name: str = "yolo"):
         """
         Perform drowsiness detection using real trained model
         Returns standardized best_idx format
         """
-        model = self.get_model(model_name)
+        model: RealYOLOModel = self.get_model(model_name)
         if not model:
             raise ValueError(f"Model '{model_name}' not found")
 
         try:
-            is_drowsy, confidence, bbox, class_name, class_id = model.predict(image)
-            print(
-                f"Detection results - Is Drowsy: {is_drowsy}, Confidence: {confidence}"
-            )
+            answer, confidence, bbox, class_name, class_id = model.predict(image)
+            print(f"Detection results - Category: {answer}, Confidence: {confidence}")
             return {
-                "is_drowsy": is_drowsy,
+                "is_drowsy": answer,  # Now returns 4-class category: "drowsy", "distracted", "safety-violation", "safe"
                 "confidence": confidence,
                 "class_name": class_name,
                 "class_id": class_id,
