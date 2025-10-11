@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
-        default="../models/models/yolo.pt",
+        default="../../models/weights/yolo.pt",
         help="path ไปยังไฟล์ .pt (relative จาก tests/test.py ได้)",
     )
     parser.add_argument(

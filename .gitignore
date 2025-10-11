@@ -444,7 +444,6 @@ credentials/
 api_keys.txt
 
 # Large model files (use Git LFS instead)
-models/weights/
 models/checkpoints/
 pretrained/
 

@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
-        default="../models/models/fasterrcnn_scripted.pt",
+        default="../../models/weights/fasterrcnn_scripted.pt",
         help="path ไปยังไฟล์ .pt (relative จาก tests/test.py ได้)",
     )
     parser.add_argument(

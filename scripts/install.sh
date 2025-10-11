@@ -89,12 +89,15 @@ fi
 
 # Navigate to the ionic-app directory
 print_status "Navigating to ionic-app directory..."
-if [ ! -d "ionic-app" ]; then
-    print_error "ionic-app directory not found. Please run this script from the app directory."
+IONIC_APP_DIR="src/frontend/ionic-app"
+
+if [ ! -d "$IONIC_APP_DIR" ]; then
+    print_error "ionic-app directory not found at $IONIC_APP_DIR"
+    print_error "Please run this script from the project root directory."
     exit 1
 fi
 
-cd ionic-app
+cd "$IONIC_APP_DIR"
 
 # Install project dependencies
 print_status "Installing project dependencies..."
@@ -115,8 +118,8 @@ else
     print_status "Creating .env file..."
     cat > .env << EOF
 # Backend API Configuration
-VITE_API_BASE_URL=http://localhost:5000
-VITE_WEBSOCKET_URL=ws://localhost:5000
+VITE_API_BASE_URL=http://localhost:8000
+VITE_WEBSOCKET_URL=ws://localhost:8000
 
 # App Configuration
 VITE_APP_NAME=Drowsiness Detector
@@ -163,13 +166,16 @@ echo ""
 print_success "Your Ionic React app is ready for development!"
 echo ""
 echo "📋 Next Steps:"
-echo "   1. Start the development server:"
-echo "      ${BLUE}ionic serve${NC}"
+echo "   1. Navigate to the app directory:"
+echo "      ${BLUE}cd src/frontend/ionic-app${NC}"
 echo ""
-echo "   2. Open your browser to:"
+echo "   2. Start the development server:"
+echo "      ${BLUE}npm run dev${NC}  or  ${BLUE}ionic serve${NC}"
+echo ""
+echo "   3. Open your browser to:"
 echo "      ${BLUE}http://localhost:8100${NC}"
 echo ""
-echo "   3. For mobile development, add platforms:"
+echo "   4. For mobile development, add platforms:"
 echo "      ${BLUE}ionic capacitor add ios${NC}     # For iOS"
 echo "      ${BLUE}ionic capacitor add android${NC} # For Android"
 echo ""

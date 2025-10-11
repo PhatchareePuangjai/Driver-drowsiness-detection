@@ -76,11 +76,12 @@ class ImageProcessor:
             elif pil_image.mode != "RGB":
                 pil_image = pil_image.convert("RGB")
 
-            # Convert PIL to OpenCV (BGR)
-            cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            # Convert PIL to numpy array (keep RGB format for YOLO)
+            # YOLO models can handle RGB directly, no need to convert to BGR
+            rgb_image = np.array(pil_image)
 
-            logger.info(f"Successfully decoded image: {cv_image.shape}")
-            return cv_image
+            logger.info(f"Successfully decoded image: {rgb_image.shape}")
+            return rgb_image
 
         except Exception as e:
             logger.error(f"Error decoding base64 image: {e}")

@@ -21,8 +21,8 @@ This document provides a comprehensive implementation plan for creating an Ionic
 │   Ionic App     │    │  Flask Backend  │    │   ML Models     │
 │                 │    │                 │    │                 │
 │ • Camera Feed   │◄──►│ • API Endpoints │◄──►│ • YOLO          │
-│ • Real-time UI  │    │ • Image Process │    │ • Faster R-CNN  │
-│ • Alert System  │    │ • WebSocket     │    │ • VGG16         │
+│ • Real-time UI  │    │ • Image Process │    │                 │
+│ • Alert System  │    │ • WebSocket     │    │                 │
 │ • Data Storage  │    │ • Model Manager │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```

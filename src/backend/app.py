@@ -12,12 +12,12 @@ import os
 import cv2
 
 # Import real model components (YOLO only)
-from models.real_model_loader import real_model_loader as model_loader
+from .models.real_model_loader import real_model_loader as model_loader
 
 print("✅ Using real YOLO model")
 
-from utils.response_formatter import ResponseFormatter
-from utils.image_processing import ImageProcessor
+from .utils.response_formatter import ResponseFormatter
+from .utils.image_processing import ImageProcessor
 
 # Helper functions for class name handling
 import re
@@ -322,11 +322,13 @@ def detect_drowsiness():
                     img_array = np.array(pil_image)
                     yolo_results = yolo_model.model(img_array, verbose=False)
                     if yolo_results and len(yolo_results) > 0:
-                        annotated = yolo_results[0].plot()  # BGR image
-                        ok = cv2.imwrite(save_path, annotated)
-                        if ok:
-                            result["saved_image_path"] = save_path
-                            logger.info(f"Saved annotated image to {save_path}")
+                        # plot() returns BGR by default, but we want RGB for correct colors
+                        # Use PIL parameter to get RGB directly
+                        annotated = yolo_results[0].plot(pil=True)  # Returns PIL Image in RGB
+                        # Save PIL Image directly (no need for cv2)
+                        annotated.save(save_path, quality=95)
+                        result["saved_image_path"] = save_path
+                        logger.info(f"Saved annotated image to {save_path}")
                     else:
                         # Fallback: draw bbox if available
                         if result.get("bbox"):
@@ -466,9 +468,10 @@ def detect_batch():
                         img_array = np.array(pil_image)
                         yolo_results = yolo_model.model(img_array, verbose=False)
                         if yolo_results and len(yolo_results) > 0:
-                            annotated = yolo_results[0].plot()
-                            if cv2.imwrite(save_path, annotated):
-                                detection["saved_image_path"] = save_path
+                            # Use pil=True to get RGB PIL Image instead of BGR numpy array
+                            annotated = yolo_results[0].plot(pil=True)
+                            annotated.save(save_path, quality=95)
+                            detection["saved_image_path"] = save_path
                     except Exception as save_err:
                         logger.warning(
                             f"Failed to save annotated batch image {i}: {save_err}"

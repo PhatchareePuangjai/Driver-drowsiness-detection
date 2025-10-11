@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 import logging
 import os
+from pathlib import Path
 import cv2
 
 # Try to import YOLO dependencies
@@ -275,9 +276,13 @@ class RealYOLOModel:
             # Convert PIL to numpy array for YOLO
             import numpy as np
 
+            # Keep as RGB (don't convert to BGR)
+            # Ultralytics YOLO can accept PIL Image directly which preserves RGB
+            # Or we can pass numpy array but need to ensure it stays RGB
             img_array = np.array(pil_image)
 
-            # Run inference
+            # Run inference with RGB image (bgr=False ensures no BGR conversion during augmentation)
+            # Note: During inference (predict), YOLO expects RGB by default when passing numpy arrays
             results = self.model(img_array, verbose=False)
 
             # Process results
@@ -332,11 +337,15 @@ class RealYOLOModel:
             raise
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_MODEL_DIR = Path(os.getenv("MODEL_DIR", PROJECT_ROOT / "models" / "weights")).resolve()
+
+
 class RealModelLoader:
     """Main model loader class - manages real trained models"""
 
-    def __init__(self, model_dir: str = "."):
-        self.model_dir = model_dir
+    def __init__(self, model_dir: str | Path = DEFAULT_MODEL_DIR):
+        self.model_dir = Path(model_dir).resolve()
         self.models = {}
         self.load_models()
 
@@ -347,19 +356,17 @@ class RealModelLoader:
 
             # Check for YOLO model first (try multiple paths)
             yolo_paths = [
-                os.path.join(self.model_dir, "yolo.pt"),
-                os.path.join(self.model_dir, "models", "yolo.pt"),
-                os.path.join(
-                    self.model_dir, "models", "models", "yolo.pt"
-                ),  # Found here
-                "yolo.pt",  # Current directory
+                self.model_dir / "yolo.pt",
+                PROJECT_ROOT / "models" / "yolo.pt",
+                PROJECT_ROOT / "models" / "weights" / "yolo.pt",
+                Path.cwd() / "yolo.pt",
             ]
 
             yolo_loaded = False
             for yolo_path in yolo_paths:
-                if os.path.exists(yolo_path) and YOLO_AVAILABLE:
+                if yolo_path.exists() and YOLO_AVAILABLE:
                     try:
-                        self.models["yolo"] = RealYOLOModel(yolo_path)
+                        self.models["yolo"] = RealYOLOModel(str(yolo_path))
                         print(
                             f"✅ Real YOLO model loaded successfully from {yolo_path}"
                         )
@@ -372,10 +379,10 @@ class RealModelLoader:
                 print("ℹ️ YOLO model not found in any expected location")
 
             # Check for Faster R-CNN model
-            frcnn_path = os.path.join(self.model_dir, "fasterrcnn_scripted.pt")
-            if os.path.exists(frcnn_path):
+            frcnn_path = self.model_dir / "fasterrcnn_scripted.pt"
+            if frcnn_path.exists():
                 try:
-                    self.models["faster_rcnn"] = RealFasterRCNNModel(frcnn_path)
+                    self.models["faster_rcnn"] = RealFasterRCNNModel(str(frcnn_path))
                     print("✅ Real Faster R-CNN model loaded successfully")
                 except Exception as e:
                     print(f"⚠️ Failed to load Faster R-CNN model: {e}")

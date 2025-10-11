@@ -13,7 +13,7 @@ def resolve_path(base_file: str, relative: str) -> Path:
 
 
 script_file = __file__  # ตำแหน่งไฟล์สคริปต์นี้
-model_path = resolve_path(script_file, "../models/models/yolo.pt")
+model_path = resolve_path(script_file, "../../models/weights/yolo.pt")
 img_path = resolve_path(script_file, "./images/SafeDriving1.jpg")
 
 # โหลดโมเดล
