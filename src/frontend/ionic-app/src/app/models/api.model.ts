@@ -22,7 +22,8 @@ export type DrowsinessStatus =
   | "safe"
   | "drowsy"
   | "distracted"
-  | "safety-violation";
+  | "safety-violation"
+  | "unknown";
 
 /**
  * Alert Sensitivity Levels

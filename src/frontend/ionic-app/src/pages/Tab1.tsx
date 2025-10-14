@@ -70,9 +70,7 @@ const Tab1: React.FC = () => {
     null
   );
   const [captureInterval, setCaptureInterval] = useState(2000); // 2 seconds default
-  const [selectedModel, setSelectedModel] = useState<
-    "yolo" | "faster_rcnn" | "vgg16"
-  >("yolo");
+  const [selectedModel, setSelectedModel] = useState<"yolo">("yolo");
   const [showSettings, setShowSettings] = useState(false);
 
   // New states for image display
@@ -88,6 +86,7 @@ const Tab1: React.FC = () => {
     drowsyDetections: 0,
     distractedDetections: 0,
     safetyViolationDetections: 0,
+    unknownDetections: 0,
     alertsTriggered: 0,
     sessionStartTime: null as Date | null,
   });
@@ -97,12 +96,14 @@ const Tab1: React.FC = () => {
     drowsy: 0,
     distracted: 0,
     safetyViolation: 0,
+    unknown: 0,
     lastStatus: null as DrowsinessStatus | null,
   });
 
   // Audio context for alert sounds
   const audioContextRef = useRef<AudioContext | null>(null);
   const drowsyAlertIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const unknownTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if running on web platform
   const isWeb = Capacitor.getPlatform() === "web";
@@ -118,8 +119,10 @@ const Tab1: React.FC = () => {
         return "👁️";
       case "safety-violation":
         return "⚠️";
-      default:
+      case "unknown":
         return "❓";
+      default:
+        return "";
     }
   };
 
@@ -133,8 +136,10 @@ const Tab1: React.FC = () => {
         return "Distracted";
       case "safety-violation":
         return "Safety Violation";
-      default:
+      case "unknown":
         return "Unknown";
+      default:
+        return "";
     }
   };
 
@@ -143,18 +148,16 @@ const Tab1: React.FC = () => {
       case "safe":
         return "success";
       case "drowsy":
-        return "warning";
+        return "danger";
       case "distracted":
         return "warning";
       case "safety-violation":
         return "danger";
+      case "unknown":
+        return "danger";
       default:
         return "medium";
     }
-  };
-
-  const shouldTriggerAlert = (status: DrowsinessStatus) => {
-    return status === "drowsy" || status === "safety-violation";
   };
 
   // Initialize audio context
@@ -172,6 +175,16 @@ const Tab1: React.FC = () => {
       clearInterval(drowsyAlertIntervalRef.current);
       drowsyAlertIntervalRef.current = null;
       console.log("🔇 Drowsy alert sound stopped");
+    }
+  }, []);
+
+  // Stop unknown timeout
+  const stopUnknownTimeout = useCallback(() => {
+    console.log("⏱️ Stopping unknown timeout if any...");
+    if (unknownTimeoutRef.current) {
+      clearTimeout(unknownTimeoutRef.current);
+      unknownTimeoutRef.current = null;
+      console.log("⏱️ Unknown timeout cleared");
     }
   }, []);
 
@@ -203,7 +216,7 @@ const Tab1: React.FC = () => {
 
   // Play alert sound
   const playAlertSound = useCallback(
-    (type: "drowsy" | "warning") => {
+    (type: "drowsy" | "warning" | "unknown") => {
       try {
         if (type === "drowsy") {
           // 🚨 เมื่อ detect drowsy ติดต่อกัน 3 ครั้ง:
@@ -226,6 +239,58 @@ const Tab1: React.FC = () => {
 
           drowsyAlertIntervalRef.current = setInterval(() => {
             playSingleDrowsyBeep();
+          }, 2000); // Repeat every 2 seconds
+        } else if (type === "unknown") {
+          // ❓ เสียงเตือน Unknown (ต่อเนื่องเหมือน drowsy แต่ต่างความถี่):
+          // 🔄 เสียงต่อเนื่อง: เล่นเสียงเตือนทุก 2 วินาที
+          // ⏰ ระยะเวลา: 10 วินาที หรือจนกว่าจะ detect สถานะอื่น
+          // 🔊 รูปแบบเสียง: 700Hz → 300Hz → 700Hz (0.8 วินาที/ครั้ง)
+          // 📢 ระดับเสียง: 1 (เสียงดังชัดเจน)
+
+          // Stop any existing unknown alert first
+          stopUnknownTimeout();
+
+          // Play unknown alert - similar pattern but different frequency
+          console.log("❓ Starting continuous unknown alert...");
+
+          const playUnknownBeep = () => {
+            try {
+              const audioContext = initializeAudioContext();
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+
+              // Different frequency pattern for unknown (700Hz instead of 800Hz)
+              oscillator.frequency.setValueAtTime(
+                700,
+                audioContext.currentTime
+              );
+              oscillator.frequency.setValueAtTime(
+                300,
+                audioContext.currentTime + 0.1
+              );
+              oscillator.frequency.setValueAtTime(
+                700,
+                audioContext.currentTime + 0.2
+              );
+              gainNode.gain.setValueAtTime(1, audioContext.currentTime);
+              gainNode.gain.exponentialRampToValueAtTime(
+                0.01,
+                audioContext.currentTime + 0.8
+              );
+              oscillator.start(audioContext.currentTime);
+              oscillator.stop(audioContext.currentTime + 0.8);
+            } catch (error) {
+              console.error("Failed to play unknown beep:", error);
+            }
+          };
+
+          playUnknownBeep(); // Play immediately
+
+          drowsyAlertIntervalRef.current = setInterval(() => {
+            playUnknownBeep();
           }, 2000); // Repeat every 2 seconds
         } else {
           // ⚠️ เสียงเตือน Distracted/Safety-violation (เหมือนเดิม):
@@ -258,7 +323,7 @@ const Tab1: React.FC = () => {
         console.error("Failed to play alert sound:", error);
       }
     },
-    [stopDrowsyAlert, playSingleDrowsyBeep]
+    [stopDrowsyAlert, playSingleDrowsyBeep, stopUnknownTimeout]
   );
 
   // Update consecutive alerts and trigger sounds
@@ -272,7 +337,9 @@ const Tab1: React.FC = () => {
           newState.drowsy = 0;
           newState.distracted = 0;
           newState.safetyViolation = 0;
+          newState.unknown = 0;
           stopDrowsyAlert(); // Stop continuous drowsy alert when safe
+          stopUnknownTimeout(); // Stop unknown timeout when safe
         } else if (status === prev.lastStatus) {
           // Increment counter for consecutive same status
           switch (status) {
@@ -281,11 +348,12 @@ const Tab1: React.FC = () => {
               if (newState.drowsy === 3) {
                 playAlertSound("drowsy");
                 setAlertMessage(
-                  `🚨 CRITICAL: Drowsiness detected ${newState.drowsy} times in a row!`
+                  `🚨 คุณมีอาการง่วงนอน ${newState.drowsy} ครั้งติดต่อกัน! กรุณาหยุดพัก`
                 );
                 setShowAlert(true);
                 // reset counter to avoid repeated alerts
                 newState.drowsy = 0;
+                newState.unknown = 0;
               }
               break;
             case "distracted":
@@ -293,11 +361,12 @@ const Tab1: React.FC = () => {
               if (newState.distracted === 3) {
                 playAlertSound("warning");
                 setAlertMessage(
-                  `⚠️ WARNING: Driver distracted ${newState.distracted} times in a row!`
+                  `⚠️ คุณถูกเบี่ยงเบนความสนใจ ${newState.distracted} ครั้งติดต่อกัน! กรุณาโฟกัสที่ถนนหรือ ขับขี่อย่างระมัดระวัง`
                 );
                 setShowAlert(true);
                 // reset counter to avoid repeated alerts
                 newState.distracted = 0;
+                newState.unknown = 0;
               }
               break;
             case "safety-violation":
@@ -305,12 +374,45 @@ const Tab1: React.FC = () => {
               if (newState.safetyViolation === 3) {
                 playAlertSound("warning");
                 setAlertMessage(
-                  `⚠️ WARNING: Safety violations detected ${newState.safetyViolation} times in a row!`
+                  `⚠️ คุณมีพฤติกรรมเสี่ยง ${newState.safetyViolation} ครั้งติดต่อกัน! กรุณาขับขี่อย่างระมัดระวัง`
                 );
                 setShowAlert(true);
                 // reset counter to avoid repeated alerts
                 newState.safetyViolation = 0;
+                newState.unknown = 0;
               }
+              break;
+            case "unknown":
+              // Handle "unknown" status
+              newState.unknown = prev.unknown + 1;
+              if (newState.unknown === 5) {
+                playAlertSound("unknown");
+                setAlertMessage(
+                  `❓ ไม่สามารถตรวจจับได้ ${newState.unknown} ครั้งติดต่อกัน! กรุณาตรวจสอบว่าคุณอยู่หน้ากล้อง`
+                );
+                setShowAlert(true);
+
+                // Start 10 second timeout to auto-stop capture
+                console.log("⏱️ Starting 10 second unknown timeout...");
+                stopUnknownTimeout(); // Clear any existing timeout
+                unknownTimeoutRef.current = setTimeout(() => {
+                  console.log("⏱️ Unknown timeout reached - stopping capture");
+                  setAlertMessage(
+                    "❌ ไม่พบผู้ใช้งานในกล้อง ระบบจะหยุดการตรวจจับอัตโนมัติ"
+                  );
+                  setShowAlert(true);
+
+                  // Stop capture directly using service
+                  cameraService.stopContinuousCapture();
+                  stopDrowsyAlert();
+                  stopUnknownTimeout();
+                }, 10000); // 10 seconds
+
+                // reset counter to avoid repeated alerts
+                newState.unknown = 0;
+              }
+              break;
+            default:
               break;
           }
         } else {
@@ -318,13 +420,19 @@ const Tab1: React.FC = () => {
           newState.drowsy = status === "drowsy" ? 1 : 0;
           newState.distracted = status === "distracted" ? 1 : 0;
           newState.safetyViolation = status === "safety-violation" ? 1 : 0;
+          newState.unknown = status === "unknown" ? 1 : 0;
+
+          // Clear unknown timeout if status changed from unknown
+          if (status !== "unknown" && prev.lastStatus === "unknown") {
+            stopUnknownTimeout();
+          }
         }
 
         newState.lastStatus = status;
         return newState;
       });
     },
-    [playAlertSound, stopDrowsyAlert]
+    [playAlertSound, stopDrowsyAlert, stopUnknownTimeout]
   );
 
   // Initialize live video preview for web
@@ -369,8 +477,9 @@ const Tab1: React.FC = () => {
     return () => {
       stopLivePreview();
       stopDrowsyAlert(); // Stop drowsy alert on cleanup
+      stopUnknownTimeout(); // Stop unknown timeout on cleanup
     };
-  }, [stopLivePreview, stopDrowsyAlert]);
+  }, [stopLivePreview, stopDrowsyAlert, stopUnknownTimeout]);
 
   // Initialize camera service and event listeners
   useEffect(() => {
@@ -418,6 +527,11 @@ const Tab1: React.FC = () => {
           case "safety-violation":
             newStats.safetyViolationDetections =
               prev.safetyViolationDetections + 1;
+            break;
+          case "unknown":
+            newStats.unknownDetections = prev.unknownDetections + 1;
+            break;
+          default:
             break;
         }
 
@@ -519,10 +633,12 @@ const Tab1: React.FC = () => {
     cameraService.stopContinuousCapture();
     // Stop any ongoing drowsy alert sound
     stopDrowsyAlert();
+    // Stop unknown timeout
+    stopUnknownTimeout();
     // Keep live preview running even after stopping capture
     // User can still see the camera feed
     console.log("🛑 Capture stopped, drowsy alerts cleared");
-  }, [stopDrowsyAlert]);
+  }, [stopDrowsyAlert, stopUnknownTimeout]);
 
   // Take single photo for analysis
   const takeSinglePhoto = useCallback(async () => {
@@ -735,22 +851,6 @@ const Tab1: React.FC = () => {
                   </IonButton>
                 </IonCol>
               </IonRow>
-              <IonRow>
-                <IonCol>
-                  <IonButton
-                    expand="block"
-                    fill="clear"
-                    disabled={!cameraStatus.hasPermission || isLoading}
-                    onClick={takeSinglePhoto}
-                  >
-                    <IonIcon icon={eyeOutline} slot="start" />
-                    {isLoading && !cameraStatus.isCapturing
-                      ? "Analyzing..."
-                      : "Single Check"}
-                  </IonButton>
-                </IonCol>
-              </IonRow>
-
               {/* Live Preview Toggle (Web only) */}
               {isWeb && cameraStatus.hasPermission && (
                 <IonRow>
@@ -998,10 +1098,18 @@ const Tab1: React.FC = () => {
                   </IonCol>
                 </IonRow>
                 <IonRow>
-                  <IonCol>
+                  <IonCol size="6">
                     <IonText color="medium">
-                      <p style={{ textAlign: "center" }}>
-                        <strong>🚨 Alerts Triggered:</strong>{" "}
+                      <p>
+                        <strong>❓ Unknown:</strong>{" "}
+                        {sessionStats.unknownDetections}
+                      </p>
+                    </IonText>
+                  </IonCol>
+                  <IonCol size="6">
+                    <IonText color="medium">
+                      <p>
+                        <strong>🚨 Alerts:</strong>{" "}
                         {sessionStats.alertsTriggered}
                       </p>
                     </IonText>
@@ -1040,13 +1148,7 @@ const Tab1: React.FC = () => {
                   value={selectedModel}
                   onIonChange={(e) => setSelectedModel(e.detail.value)}
                 >
-                  <IonSelectOption value="yolo">YOLO (Fast)</IonSelectOption>
-                  <IonSelectOption value="faster_rcnn">
-                    Faster R-CNN (Accurate)
-                  </IonSelectOption>
-                  <IonSelectOption value="vgg16">
-                    VGG16 (Lightweight)
-                  </IonSelectOption>
+                  <IonSelectOption value="yolo">YOLO</IonSelectOption>
                 </IonSelect>
               </IonItem>
             </IonCardContent>
@@ -1056,10 +1158,16 @@ const Tab1: React.FC = () => {
         {/* Alert Dialog */}
         <IonAlert
           isOpen={showAlert}
-          onDidDismiss={() => setShowAlert(false)}
-          header="Driver Safety Alert"
+          onDidDismiss={() => {
+            setShowAlert(false);
+            // stop drowsy alert if it's a drowsy alert
+            stopDrowsyAlert();
+            // stop unknown alert if it's an unknown alert
+            stopUnknownTimeout();
+          }}
+          header="แจ้งเตือน"
           message={alertMessage}
-          buttons={["OK"]}
+          buttons={["รับทราบ"]}
         />
       </IonContent>
     </IonPage>

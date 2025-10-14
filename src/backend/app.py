@@ -261,8 +261,8 @@ def detect_drowsiness():
 
             # Apply confidence threshold
             if result.get("confidence", 0) < confidence_threshold:
-                result["is_drowsy"] = "safe"
-                result["class_name"] = "normal-driving"
+                result["is_drowsy"] = "unknown"
+                result["class_name"] = "unknown"
                 logger.info(
                     f"Result filtered by confidence threshold: {result.get('confidence', 0)} < {confidence_threshold}"
                 )

@@ -73,8 +73,11 @@ def _is_drowsy_class_name(name: str) -> str:
         return "distracted"
     elif name in safety_violation_keywords:
         return "safety-violation"
-    else:
+    elif name in ["safe", "safe-driving", "safe_driving", "safedriving"]:
         return "safe"
+    else:
+        # นอกเหนือจากนี้ถือเป็น unknown คือไม่รู้
+        return "unknown"
 
 
 class RealFasterRCNNModel:
