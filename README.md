@@ -84,7 +84,7 @@ PYTHONPATH=src python -m pipelines.run_all \
 
 ## ⚙️ การรัน Backend Flask API (โหมดโมเดลจริง)
 
-โค้ด backend ถูกย้ายมาไว้ใน `src/backend/` และใช้โครงสร้าง package เต็มรูปแบบแล้ว
+โค้ดอยู่ใน `src/backend/` และใช้โครงสร้าง package เต็มรูปแบบแล้ว
 
 ```bash
 # 1) สร้างและเปิดใช้ virtual environment (ถ้ายังไม่ได้ทำ)
@@ -108,6 +108,7 @@ gunicorn -w 4 -b 0.0.0.0:8000 backend.app:app
 
 ```bash
 cd src/frontend/ionic-app
+nvm use
 npm install
 npm run dev           # รันบน http://localhost:8100
 

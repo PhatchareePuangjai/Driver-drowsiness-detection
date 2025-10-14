@@ -337,7 +337,7 @@ class RealYOLOModel:
             raise
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]  # Go up 3 levels: models -> backend -> src -> root
 DEFAULT_MODEL_DIR = Path(os.getenv("MODEL_DIR", PROJECT_ROOT / "models" / "weights")).resolve()
 
 
@@ -353,17 +353,20 @@ class RealModelLoader:
         """Initialize real trained models"""
         try:
             print("📦 Loading real trained models...")
+            print(f"🔍 PROJECT_ROOT: {PROJECT_ROOT}")
+            print(f"🔍 Model directory: {self.model_dir}")
 
             # Check for YOLO model first (try multiple paths)
             yolo_paths = [
+                PROJECT_ROOT / "models" / "weights" / "yolo.pt",  # Primary path
                 self.model_dir / "yolo.pt",
                 PROJECT_ROOT / "models" / "yolo.pt",
-                PROJECT_ROOT / "models" / "weights" / "yolo.pt",
                 Path.cwd() / "yolo.pt",
             ]
 
             yolo_loaded = False
             for yolo_path in yolo_paths:
+                print(f"🔍 Checking YOLO path: {yolo_path} (exists: {yolo_path.exists()})")
                 if yolo_path.exists() and YOLO_AVAILABLE:
                     try:
                         self.models["yolo"] = RealYOLOModel(str(yolo_path))

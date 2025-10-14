@@ -484,3 +484,4 @@ node_modules
 
 
 app/backend/outputs/detections/
+outputs/detections/
