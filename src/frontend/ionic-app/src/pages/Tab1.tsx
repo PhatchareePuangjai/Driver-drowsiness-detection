@@ -178,7 +178,7 @@ const Tab1: React.FC = () => {
     }
   }, []);
 
-  // Stop unknown timeout
+  // Stop unknown timeout and alerts
   const stopUnknownTimeout = useCallback(() => {
     console.log("⏱️ Stopping unknown timeout if any...");
     if (unknownTimeoutRef.current) {
@@ -218,6 +218,9 @@ const Tab1: React.FC = () => {
   const playAlertSound = useCallback(
     (type: "drowsy" | "warning" | "unknown") => {
       try {
+        // Stop unknown alert if it was playing
+        stopUnknownTimeout();
+        stopDrowsyAlert();        
         if (type === "drowsy") {
           // 🚨 เมื่อ detect drowsy ติดต่อกัน 3 ครั้ง:
           // 🔄 เสียงต่อเนื่อง: เล่นเสียงเตือนทุก 2 วินาที
@@ -229,9 +232,6 @@ const Tab1: React.FC = () => {
           // 😊 เมื่อ detect เป็น "safe" → หยุดเสียงทันที
           // 🛑 เมื่อกด "Stop" capture → หยุดเสียงทันที
           // 🔄 เมื่อ component unmount → หยุดเสียงทันที
-
-          // Stop any existing drowsy alert
-          stopDrowsyAlert();
 
           // Start continuous drowsy alert - play beep every 2 seconds until stopped
           console.log("🚨 Starting continuous drowsy alert...");
@@ -247,11 +247,6 @@ const Tab1: React.FC = () => {
           // 🔊 รูปแบบเสียง: 700Hz → 300Hz → 700Hz (0.8 วินาที/ครั้ง)
           // 📢 ระดับเสียง: 1 (เสียงดังชัดเจน)
 
-          // Stop any existing unknown alert first
-          stopUnknownTimeout();
-
-          // Play unknown alert - similar pattern but different frequency
-          console.log("❓ Starting continuous unknown alert...");
 
           const playUnknownBeep = () => {
             try {
@@ -323,7 +318,7 @@ const Tab1: React.FC = () => {
         console.error("Failed to play alert sound:", error);
       }
     },
-    [stopDrowsyAlert, playSingleDrowsyBeep, stopUnknownTimeout]
+    [playSingleDrowsyBeep, stopDrowsyAlert, stopUnknownTimeout]
   );
 
   // Update consecutive alerts and trigger sounds
@@ -422,8 +417,9 @@ const Tab1: React.FC = () => {
           newState.safetyViolation = status === "safety-violation" ? 1 : 0;
           newState.unknown = status === "unknown" ? 1 : 0;
 
-          // Clear unknown timeout if status changed from unknown
+          // Clear unknown timeout and stop alert sound if status changed from unknown
           if (status !== "unknown" && prev.lastStatus === "unknown") {
+            console.log("🔄 Status changed from unknown to " + status + " - stopping unknown alerts");
             stopUnknownTimeout();
           }
         }
@@ -1160,10 +1156,11 @@ const Tab1: React.FC = () => {
           isOpen={showAlert}
           onDidDismiss={() => {
             setShowAlert(false);
-            // stop drowsy alert if it's a drowsy alert
+            // Stop both drowsy and unknown alerts when user dismisses the popup
             stopDrowsyAlert();
-            // stop unknown alert if it's an unknown alert
             stopUnknownTimeout();
+
+            console.log("👤 User dismissed alert - stopping all alerts");
           }}
           header="แจ้งเตือน"
           message={alertMessage}
