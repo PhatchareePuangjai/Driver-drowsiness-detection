@@ -109,7 +109,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
 env/
 venv/
@@ -480,6 +479,12 @@ training_model_manual/pool_data_set/data_set_1
 !setup.py
 !Dockerfile
 !docker-compose.yml
+!ionic.config.json
+!package-lock.json
+!package.json
+!tsconfig.json
+!tsconfig.node.json
+!.env
 node_modules
 
 
