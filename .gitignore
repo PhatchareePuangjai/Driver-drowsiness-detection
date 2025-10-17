@@ -145,17 +145,6 @@ cython_debug/
 # ==============================================================================
 
 # Model weights and checkpoints
-*.pt
-*.pth
-*.ckpt
-*.h5
-*.hdf5
-*.pb
-*.onnx
-*.tflite
-*.pkl
-*.pickle
-*.joblib
 
 # Training outputs
 runs/
