@@ -263,12 +263,33 @@ class RealYOLOModel:
                 print("🤷‍♂️ No detections found")
                 return "safe", 0.0, None, "safe-driving", 4
 
-            # หา result ที่มี boxes มากที่สุด (ถ้ามีหลาย result)
-            result = max(
-                results, key=lambda r: len(r.boxes) if r.boxes is not None else 0
-            )
+            # หา result ที่ดีที่สุด โดยพิจารณาว่ามี class ที่ไม่ใช่ safe_keywords หรือไม่
+            safe_keywords = ["safe-driving", "safe_driving", "safedriving", "seatbelt"]
+            
+            def get_best_result(results):
+                """เลือก result ที่ดีที่สุด โดยให้ความสำคัญกับ class ที่ไม่ใช่ safe_keywords"""
+                valid_results = [r for r in results if r.boxes is not None and len(r.boxes) > 0]
+                
+                if not valid_results:
+                    return None
+                
+                # หา result ที่มี non-safe class
+                for r in valid_results:
+                    class_names = r.names
+                    classes = r.boxes.cls.cpu().numpy()
+                    
+                    # เช็คว่ามี class ไหนที่ไม่ใช่ safe_keywords
+                    for cls_id in classes:
+                        class_name = class_names.get(int(cls_id), "").lower()
+                        if class_name not in safe_keywords:
+                            return r
+                
+                # ถ้าทุก class เป็น safe_keywords หรือไม่มีเลย ใช้ logic เดิม (result ที่มี boxes มากที่สุด)
+                return max(valid_results, key=lambda r: len(r.boxes))
+            
+            result = get_best_result(results)
 
-            if result.boxes is None or len(result.boxes) == 0:
+            if result.boxes is None or len(result.boxes) == 0 or result is None:
                 print("🤷‍♂️ No bounding boxes found")
                 return "safe", 0.0, None, "safe-driving", 4
 
