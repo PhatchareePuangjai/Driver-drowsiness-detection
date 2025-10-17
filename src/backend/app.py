@@ -316,21 +316,28 @@ def detect_drowsiness():
                     f"{model_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
                 )
                 save_path = os.path.join(detections_dir, filename)
+                logger.info(f"📸 Attempting to save annotated image to: {save_path}")
 
                 if model_name == "yolo":
                     yolo_model = model_loader.get_model("yolo")
                     img_array = np.array(pil_image)
+                    logger.info(f"🖼️ Running YOLO inference for annotation...")
                     yolo_results = yolo_model.model(img_array, verbose=False)
+                    
+                    logger.info(f"📊 YOLO results: {yolo_results is not None}, len: {len(yolo_results) if yolo_results else 0}")
+                    
                     if yolo_results and len(yolo_results) > 0:
                         # plot() returns BGR by default, but we want RGB for correct colors
                         # Use PIL parameter to get RGB directly
+                        logger.info(f"🎨 Plotting YOLO results...")
                         annotated = yolo_results[0].plot(pil=True)  # Returns PIL Image in RGB
                         # Save PIL Image directly (no need for cv2)
                         annotated.save(save_path, quality=95)
                         result["saved_image_path"] = save_path
-                        logger.info(f"Saved annotated image to {save_path}")
+                        logger.info(f"✅ Saved YOLO annotated image to {save_path}")
                     else:
                         # Fallback: draw bbox if available
+                        logger.info(f"⚠️ No YOLO results, trying fallback bbox drawing...")
                         if result.get("bbox"):
                             x = int(result["bbox"].get("x", 0))
                             y = int(result["bbox"].get("y", 0))
@@ -345,9 +352,14 @@ def detect_drowsiness():
                             ok = cv2.imwrite(save_path, img_bgr)
                             if ok:
                                 result["saved_image_path"] = save_path
-                                logger.info(f"Saved bbox image to {save_path}")
+                                logger.info(f"✅ Saved bbox image to {save_path}")
+                            else:
+                                logger.error(f"❌ Failed to write bbox image to {save_path}")
+                        else:
+                            logger.warning(f"⚠️ No bbox available, cannot save annotated image")
                 else:
                     # Future models: simple bbox draw if bbox exists
+                    logger.info(f"🔧 Using fallback for model: {model_name}")
                     if result.get("bbox"):
                         x = int(result["bbox"].get("x", 0))
                         y = int(result["bbox"].get("y", 0))
@@ -358,9 +370,13 @@ def detect_drowsiness():
                         ok = cv2.imwrite(save_path, img_bgr)
                         if ok:
                             result["saved_image_path"] = save_path
-                            logger.info(f"Saved bbox image to {save_path}")
+                            logger.info(f"✅ Saved bbox image to {save_path}")
+                        else:
+                            logger.error(f"❌ Failed to write image to {save_path}")
+                    else:
+                        logger.warning(f"⚠️ No bbox available for model {model_name}")
             except Exception as save_err:
-                logger.warning(f"Failed to save annotated image: {save_err}")
+                logger.error(f"❌ Failed to save annotated image: {save_err}", exc_info=True)
 
             logger.info(
                 f"Detection completed: {result.get('class_name', 'unknown')} (confidence: {result.get('confidence', 0):.2f})"
