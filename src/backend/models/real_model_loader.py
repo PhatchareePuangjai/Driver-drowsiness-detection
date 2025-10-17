@@ -26,8 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 # Helper utilities for class handling (name-based, model-agnostic)
-def _is_drowsy_class_name(name: str) -> str:
-    name = name.lower()
+def map_class_name_to_status(name: str) -> str:
+    if not name:
+        return "unknown"
+    
+    n = name.lower()
     drowsy_keywords = ["drowsy"]
     distracted_keywords = [
         "distracted",
@@ -38,15 +41,14 @@ def _is_drowsy_class_name(name: str) -> str:
     ]
     safe_keywords = ["safe-driving", "safe_driving", "safedriving", "seatbelt"]
 
-    if name in drowsy_keywords:
+    if n in drowsy_keywords:
         return "drowsy"
-    elif name in distracted_keywords:
+    if n in distracted_keywords:
         return "distracted"
-    elif name in safe_keywords:
+    if n in safe_keywords:
         return "safe"
-    else:
-        # นอกเหนือจากนี้ถือเป็น unknown คือไม่รู้
-        return "unknown"
+    # นอกเหนือจากนี้ถือเป็น unknown คือไม่รู้
+    return "unknown"
 
 class RealFasterRCNNModel:
     """Real Faster R-CNN model for drowsiness detection with 7-class classification"""
@@ -169,7 +171,7 @@ class RealFasterRCNNModel:
             confidence = float(best_score.item())
 
             # Determine if drowsy by name (unknown mapping → assume non-drowsy)
-            answer = _is_drowsy_class_name(class_name)
+            answer = map_class_name_to_status(class_name)
 
             # Convert bbox to format expected by API
             x1, y1, x2, y2 = best_box.tolist()
@@ -287,7 +289,7 @@ class RealYOLOModel:
 
             class_name = class_names.get(best_class, "unknown")
             # Determine drowsiness by class name
-            answer = _is_drowsy_class_name(class_name)
+            answer = map_class_name_to_status(class_name)
 
             # Convert bbox format
             x1, y1, x2, y2 = best_box
@@ -418,7 +420,7 @@ class RealModelLoader:
                 names_map = getattr(model.model, "names", {}) or {}
                 supported_classes = [str(v) for _, v in sorted(names_map.items())]
                 for n in supported_classes:
-                    if _is_drowsy_class_name(n) == "drowsy":
+                    if map_class_name_to_status(n) == "drowsy":
                         drowsy_names.append(n)
                     else:
                         safe_names.append(n)
