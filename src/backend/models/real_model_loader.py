@@ -26,59 +26,27 @@ logger = logging.getLogger(__name__)
 
 
 # Helper utilities for class handling (name-based, model-agnostic)
-def _normalize_class_name(name: str) -> str:
-    """Normalize label names across datasets.
-
-    - Converts CamelCase (e.g., SleepyDriving) to kebab-case (sleepy-driving)
-    - Replaces spaces/underscores with hyphens
-    - Lowercases
-    """
-    s = str(name or "").strip()
-    # Insert hyphen between camelCase boundaries: aB -> a-B
-    import re
-
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", s)
-    s = s.replace("_", "-").replace(" ", "-")
-    return s.lower()
-
-
 def _is_drowsy_class_name(name: str) -> str:
-    n = _normalize_class_name(name)
-
-    # Based on the class mapping from your model:
-    # "SafeDriving": "Safe",
-    # "Drowsy": "Drowsy",
-    # "PhoneUse": "Distracted",
-    # "Consuming": "Distracted",
-    # "Eating": "Distracted",
-    # "Drinking": "Distracted",
-    # "Smoking": "Distracted",
-    # "NoSeatbelt": "Safety Violation"
     name = name.lower()
-    drowsy_keywords = ["drowsy", "sleepy", "tired"]
+    drowsy_keywords = ["drowsy"]
     distracted_keywords = [
         "distracted",
-        "phone",
-        "consuming",
-        "eating",
         "drinking",
-        "smoking",
+        "eating",
         "phoneuse",
+        "smoking",
     ]
-    safety_violation_keywords = ["safety", "no-seatbelt"]
+    safe_keywords = ["safe-driving", "safe_driving", "safedriving", "seatbelt"]
 
     if name in drowsy_keywords:
         return "drowsy"
     elif name in distracted_keywords:
         return "distracted"
-    elif name in safety_violation_keywords:
-        return "safety-violation"
-    elif name in ["safe", "safe-driving", "safe_driving", "safedriving", "seatbelt"]:
+    elif name in safe_keywords:
         return "safe"
     else:
         # นอกเหนือจากนี้ถือเป็น unknown คือไม่รู้
         return "unknown"
-
 
 class RealFasterRCNNModel:
     """Real Faster R-CNN model for drowsiness detection with 7-class classification"""
