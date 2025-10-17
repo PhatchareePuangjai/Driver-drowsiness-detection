@@ -289,7 +289,7 @@ class RealYOLOModel:
             
             result = get_best_result(results)
 
-            if result.boxes is None or len(result.boxes) == 0 or result is None:
+            if result is None or result.boxes is None or len(result.boxes) == 0:
                 print("🤷‍♂️ No bounding boxes found")
                 return "safe", 0.0, None, "safe-driving", 4
 
