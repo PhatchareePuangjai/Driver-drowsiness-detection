@@ -143,9 +143,7 @@ PYTHONPATH=src python src/backend/tests/test_yolo.py \
 
 ## 📚 แหล่งข้อมูลสำหรับดาวน์โหลด dataset
 
-1. [Drowsiness Detection for YOLOv8](https://www.kaggle.com/datasets/cubeai/drowsiness-detection-for-yolov8)
-2. [Driver Inattention Detection Dataset](https://www.kaggle.com/datasets/zeyad1mashhour/driver-inattention-detection-dataset)
-3. [Nitymed Dataset](https://www.kaggle.com/datasets/nikospetrellis/nitymed)
+1. [Driver Monitoring system Computer Vision Model](https://universe.roboflow.com/driver-monitoring-system-woxvc/driver-monitoring-system-v0mei)
 
 นำไฟล์ที่ดาวน์โหลดมาแตกไว้ใน `data/raw/` แล้วปรับไฟล์ `data/dataset.yaml` ให้สอดคล้องกับโครงสร้างของ Ultralytics
 
