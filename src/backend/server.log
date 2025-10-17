@@ -1,0 +1,52 @@
+INFO:__main__:============================================================
+INFO:__main__:🚀 Drowsiness Detection API (Mock Mode)
+INFO:__main__:============================================================
+INFO:__main__:📍 Server: http://0.0.0.0:8000
+INFO:__main__:🔧 Debug mode: True
+INFO:__main__:🤖 Models loaded: 3
+INFO:__main__:📋 Available endpoints:
+INFO:__main__:   • GET  /api/health
+INFO:__main__:   • GET  /api/models
+INFO:__main__:   • POST /api/detect
+INFO:__main__:   • POST /api/detect/batch
+INFO:__main__:   • POST /api/session/start
+INFO:__main__:   • POST /api/session/end
+INFO:__main__:   • GET  /api/session/history
+INFO:__main__:============================================================
+ * Serving Flask app 'app_mock'
+ * Debug mode: on
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.116:8000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug: * Restarting with stat
+INFO:__main__:============================================================
+INFO:__main__:🚀 Drowsiness Detection API (Mock Mode)
+INFO:__main__:============================================================
+INFO:__main__:📍 Server: http://0.0.0.0:8000
+INFO:__main__:🔧 Debug mode: True
+INFO:__main__:🤖 Models loaded: 3
+INFO:__main__:📋 Available endpoints:
+INFO:__main__:   • GET  /api/health
+INFO:__main__:   • GET  /api/models
+INFO:__main__:   • POST /api/detect
+INFO:__main__:   • POST /api/detect/batch
+INFO:__main__:   • POST /api/session/start
+INFO:__main__:   • POST /api/session/end
+INFO:__main__:   • GET  /api/session/history
+INFO:__main__:============================================================
+WARNING:werkzeug: * Debugger is active!
+INFO:werkzeug: * Debugger PIN: 416-550-033
+Traceback (most recent call last):
+  File "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/app/backend/app_mock.py", line 476, in <module>
+    app.run(host=HOST, port=PORT, debug=DEBUG)
+  File "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/app/backend/.venv/lib/python3.12/site-packages/flask/app.py", line 662, in run
+    run_simple(t.cast(str, host), port, self, **options)
+  File "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/app/backend/.venv/lib/python3.12/site-packages/werkzeug/serving.py", line 1115, in run_simple
+    run_with_reloader(
+  File "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/app/backend/.venv/lib/python3.12/site-packages/werkzeug/_reloader.py", line 459, in run_with_reloader
+    ensure_echo_on()
+  File "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/app/backend/.venv/lib/python3.12/site-packages/werkzeug/_reloader.py", line 439, in ensure_echo_on
+    termios.tcsetattr(sys.stdin, termios.TCSANOW, attributes)
+termios.error: (4, 'Interrupted system call')

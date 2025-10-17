@@ -1,0 +1,11 @@
+{
+  "demo_mode": true,
+  "seed": 42,
+  "weights_path": "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/models/weights/yolo_demo.pt",
+  "evaluation_report": "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/models/evaluations/demo_results.json",
+  "preprocessed_counts": {
+    "train": 4,
+    "val": 1,
+    "test": 5
+  }
+}

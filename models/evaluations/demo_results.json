@@ -1,0 +1,32 @@
+{
+  "weights_path": "/Users/toy/Desktop/learn/Deep learning/Driver-drowsiness-detection/models/weights/yolo_demo.pt",
+  "num_images": 4,
+  "num_detections": 3,
+  "detections": {
+    "SafeDriving": 2,
+    "Drowsy": 1
+  },
+  "average_confidence": 0.8713492155075073,
+  "per_image": [
+    {
+      "image": "SafeDriving1.jpg",
+      "confidence": 0.8842949271202087,
+      "class_id": 5,
+      "class_name": "SafeDriving"
+    },
+    {
+      "image": "SafeDriving2.jpg",
+      "confidence": 0.8700478672981262,
+      "class_id": 5,
+      "class_name": "SafeDriving"
+    },
+    {
+      "image": "SleepyDriving.jpg",
+      "confidence": 0.859704852104187,
+      "class_id": 2,
+      "class_name": "Drowsy"
+    }
+  ],
+  "seed": 42,
+  "demo_mode": true
+}
