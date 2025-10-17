@@ -65,7 +65,7 @@ def _is_drowsy_class_name(name: str) -> str:
         "smoking",
         "phoneuse",
     ]
-    safety_violation_keywords = ["safety", "seatbelt", "no-seatbelt"]
+    safety_violation_keywords = ["safety", "no-seatbelt"]
 
     if name in drowsy_keywords:
         return "drowsy"
@@ -73,7 +73,7 @@ def _is_drowsy_class_name(name: str) -> str:
         return "distracted"
     elif name in safety_violation_keywords:
         return "safety-violation"
-    elif name in ["safe", "safe-driving", "safe_driving", "safedriving"]:
+    elif name in ["safe", "safe-driving", "safe_driving", "safedriving", "seatbelt"]:
         return "safe"
     else:
         # นอกเหนือจากนี้ถือเป็น unknown คือไม่รู้
