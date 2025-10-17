@@ -111,10 +111,6 @@ cd src/frontend/ionic-app
 nvm use
 npm install
 npm run dev           # รันบน http://localhost:8100
-
-# หากต้องการ build mobile ใช้คำสั่งมาตรฐานของ Capacitor / Ionic
-npm run build
-npx cap sync
 ```
 
 > ก่อนรันให้ตั้งค่า `.env` หรือไฟล์ config ของ frontend ให้ชี้ไปที่ `http://localhost:8000` (หรือ URL ของ backend ที่ deploy)
